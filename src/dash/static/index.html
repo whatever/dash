@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>dash</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <aside>
+    <header>
+      <h1>dash</h1>
+      <span id="queue" title="Job queue">…</span>
+    </header>
+    <nav>
+      <button data-tab="chat" class="active">Chat</button>
+      <button data-tab="memories">Memories</button>
+      <button data-tab="apps">Apps</button>
+    </nav>
+    <button id="new-chat">+ New conversation</button>
+    <ul id="conversations"></ul>
+  </aside>
+
+  <main>
+    <section id="tab-chat" class="tab active">
+      <div id="messages"></div>
+      <form id="composer">
+        <textarea id="input" rows="3" placeholder="Message hermes… (Enter sends, Shift+Enter is a new line)"></textarea>
+        <button type="submit">Send</button>
+      </form>
+    </section>
+
+    <section id="tab-memories" class="tab">
+      <form id="memory-search">
+        <input id="memory-q" type="search" placeholder="Search memories by meaning…">
+      </form>
+      <form id="memory-add">
+        <input id="memory-new" placeholder="Add a memory, for example: The user prefers short answers.">
+        <button type="submit">Add</button>
+      </form>
+      <ul id="memory-list"></ul>
+    </section>
+
+    <section id="tab-apps" class="tab">
+      <p class="hint">Connected apps keep their OAuth tokens in Nango. Hermes uses them through the <code>nango</code> skill.</p>
+      <button id="connect">+ Connect an app</button>
+      <ul id="app-list"></ul>
+    </section>
+  </main>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

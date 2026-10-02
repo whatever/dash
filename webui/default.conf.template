@@ -1,0 +1,35 @@
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    # Liveness for the webui container itself; it does not check the API.
+    location = /webui-healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location = / {
+        add_header Cache-Control "no-cache";
+        try_files /index.html =404;
+    }
+
+    location /static/ {
+        add_header Cache-Control "no-cache";
+        try_files $uri =404;
+    }
+
+    location /api/ {
+        proxy_pass ${DASH_API_URL};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        # /api/jobs/<id>/events is SSE: no buffering, and long reads for agent turns.
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 900s;
+        client_max_body_size 1m;
+    }
+}

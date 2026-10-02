@@ -1,0 +1,70 @@
+# Published by .github/workflows/docker-publish.yml. Pin a sha-<short> tag
+# when you install, for example --set image=ghcr.io/whatever/dash:sha-abc1234.
+image: ghcr.io/whatever/dash:latest
+imagePullPolicy: IfNotPresent
+
+ingress:
+  host: dash.geometry.dev
+  # Traefik basicAuth with htpasswd users from secrets.auth. The
+  # Middleware must live in this namespace (allowCrossNamespace is off).
+  basicAuth: true
+
+hermes:
+  baseUrl: http://hermes-router.hermes.svc.cluster.local:8642/v1
+  model: hermes-opus
+
+memory:
+  embedModel: amazon.titan-embed-text-v2:0
+  extractModel: us.anthropic.claude-haiku-4-5-20251001-v1:0
+  topK: 8
+
+secrets:
+  # Shared geometry/config, projected by the geometry-config
+  # ClusterExternalSecret into namespaces labelled
+  # geometry.dev/geometry-config=true. Label the release namespace with it.
+  config: geometry-config
+  databaseUrlKey: DASH_DATABASE_URL
+  nangoDatabaseUrlKey: NANGO_DATABASE_URL
+  # JSON blobs in AWS Secrets Manager.
+  dash: geometry/dash        # NANGO_ENCRYPTION_KEY, NANGO_SECRET_KEY, NANGO_DASHBOARD_PASSWORD
+  hermes: geometry/hermes    # API_SERVER_KEY
+  bedrock: geometry/bedrock  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+  auth: geometry/auth        # users (htpasswd) for basicAuth
+
+api:
+  replicas: 1
+  resources:
+    requests: { cpu: 20m, memory: 128Mi }
+    limits: { memory: 384Mi }
+
+worker:
+  # Each replica is one consumer in the `workers` group, so jobs fan out.
+  replicas: 1
+  resources:
+    requests: { cpu: 20m, memory: 128Mi }
+    limits: { memory: 384Mi }
+
+redis:
+  enabled: true
+  image: redis:8-alpine
+  storage: 1Gi
+  storageClassName: local-path
+  # Used when enabled is false.
+  externalUrl: ""
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 256Mi }
+
+nango:
+  enabled: true
+  image: nangohq/nango-server:hosted
+  # Browser-facing. OAuth providers redirect to https://<host>/oauth/callback,
+  # so register that URL with each provider. Nango has its own dashboard
+  # login and API keys, so no basicAuth here (it would also break the
+  # cross-origin Connect UI calls).
+  host: nango.geometry.dev
+  connectHost: nango-connect.geometry.dev
+  dashboardUser: admin
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { memory: 1Gi }
