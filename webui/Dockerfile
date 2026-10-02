@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Web UI image: nginx serves src/dash/static and proxies /api/ to `dash serve`.
+# Web UI image: nginx serves src/dash/static and proxies /api/ and /github/ to `dash serve`.
 # Build from the repo root: docker build -f webui/Dockerfile -t dash-webui .
 # Run:   docker run --rm -p 127.0.0.1:8080:8080 -e DASH_API_URL=http://host.docker.internal:8000 dash-webui
 

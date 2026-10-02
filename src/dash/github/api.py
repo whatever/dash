@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+import httpx
 from githubkit import AppAuthStrategy, AppInstallationAuthStrategy, GitHub
 from githubkit_schemas.latest.models import Enterprise, SimpleUser
 
@@ -51,7 +52,9 @@ def _login(account: SimpleUser | Enterprise | None) -> str:
             return ""
 
 
-def app_client(app: Authorization) -> GitHub[AppAuthStrategy]:
+def app_client(
+    app: Authorization, transport: httpx.AsyncBaseTransport | None = None
+) -> GitHub[AppAuthStrategy]:
     """Return a client that acts as the given GitHub App."""
     return GitHub(
         AppAuthStrategy(
@@ -59,7 +62,8 @@ def app_client(app: Authorization) -> GitHub[AppAuthStrategy]:
             app.secrets["pem"],
             app.details["client_id"],
             app.secrets["client_secret"],
-        )
+        ),
+        async_transport=transport,
     )
 
 
@@ -81,9 +85,13 @@ def installation_client(
 class GitHubApi:
     """The GitHub REST API calls for the app setup flow."""
 
+    def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._transport = transport
+
     async def convert_manifest(self, code: str) -> NewApp:
         """Return the new app that GitHub created from a manifest code."""
-        response = await GitHub().rest.apps.async_create_from_manifest(code)
+        github = GitHub(async_transport=self._transport)
+        response = await github.rest.apps.async_create_from_manifest(code)
         app = response.parsed_data
         return NewApp(
             id=app.id,
@@ -99,7 +107,7 @@ class GitHubApi:
 
     async def installations(self, app: Authorization) -> list[Installation]:
         """Return every installation of the given GitHub App."""
-        github = app_client(app)
+        github = app_client(app, self._transport)
         return [
             Installation(
                 id=installation.id,

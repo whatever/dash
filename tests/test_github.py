@@ -2,13 +2,14 @@ import json
 from typing import cast
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from dash.db import Authorization
 from dash.github import GitHubStore, create_router, installation_client
-from dash.github.api import Installation
+from dash.github.api import GitHubApi, Installation
 from dash.github.auth import STATE_COOKIE
 from tests.fakes import CLIENT_SECRET, FakeGitHubApi, FakeGitHubStore
 
@@ -99,3 +100,57 @@ def test_installation_client_uses_stored_ids() -> None:
     auth = installation_client(app, installation).auth
 
     assert (auth.app_id, auth.installation_id, auth.client_id) == ("123", 42, "Iv1.abc")
+
+
+def owner(login: str) -> dict[str, object]:
+    url = f"https://api.github.com/users/{login}"
+    return {
+        "login": login,
+        "id": 1,
+        "node_id": "U_1",
+        "avatar_url": url,
+        "gravatar_id": None,
+        "url": url,
+        "html_url": url,
+        "followers_url": url,
+        "following_url": url,
+        "gists_url": url,
+        "starred_url": url,
+        "subscriptions_url": url,
+        "organizations_url": url,
+        "repos_url": url,
+        "events_url": url,
+        "received_events_url": url,
+        "type": "User",
+        "site_admin": False,
+    }
+
+
+async def test_convert_manifest_calls_github() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/app-manifests/c0de/conversions"
+        return httpx.Response(
+            201,
+            json={
+                "id": 123,
+                "slug": "dash-test",
+                "node_id": "A_1",
+                "client_id": "Iv1.abc",
+                "owner": owner("octocat"),
+                "name": "dash test",
+                "description": None,
+                "external_url": "https://dash.example",
+                "html_url": "https://github.com/apps/dash-test",
+                "created_at": "2026-10-02T00:00:00Z",
+                "updated_at": "2026-10-02T00:00:00Z",
+                "permissions": {"metadata": "read"},
+                "events": [],
+                "client_secret": CLIENT_SECRET,
+                "webhook_secret": None,
+                "pem": "fake-pem",
+            },
+        )
+
+    new = await GitHubApi(httpx.MockTransport(handler)).convert_manifest("c0de")
+
+    assert (new.id, new.owner, new.client_secret) == (123, "octocat", CLIENT_SECRET)
