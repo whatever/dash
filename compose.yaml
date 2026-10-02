@@ -1,0 +1,135 @@
+# Local stack for dash. Same parts as chart/, with local stand-ins:
+#   RDS → postgres (pgvector), hermes-router → fake-hermes (unless .env says otherwise).
+#
+#   cp .env.example .env   # optional; see the comments in it
+#   docker compose up --build
+#
+# Then open:
+#   http://localhost:8000   dash (served by the API)
+#   http://localhost:8080   dash through the nginx webui image
+#   http://localhost:3003   Nango dashboard (needs NANGO_ENCRYPTION_KEY in .env)
+
+x-dash-env: &dash-env
+  DATABASE_URL: postgresql://dash:dash@postgres:5432/dash
+  REDIS_URL: redis://redis:6379/0
+  HERMES_BASE_URL: ${HERMES_BASE_URL:-http://fake-hermes:8642/v1}
+  HERMES_API_KEY: ${HERMES_API_KEY:-}
+  HERMES_MODEL: ${HERMES_MODEL:-hermes-opus}
+  NANGO_URL: http://nango:3003
+  NANGO_PUBLIC_URL: http://localhost:3003
+  NANGO_CONNECT_URL: http://localhost:3009
+  NANGO_SECRET_KEY: ${NANGO_SECRET_KEY:-}
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  AWS_PROFILE: ${AWS_PROFILE:-}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  # The image's `app` user has no home, so point boto3 at the mounted ~/.aws.
+  AWS_CONFIG_FILE: /aws/config
+  AWS_SHARED_CREDENTIALS_FILE: /aws/credentials
+
+x-dash: &dash
+  build: .
+  image: dash:local
+  environment: *dash-env
+  volumes:
+    - ${HOME}/.aws:/aws:ro
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: dash
+      POSTGRES_PASSWORD: dash
+      POSTGRES_DB: dash
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./dev/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - 127.0.0.1:5432:5432
+    healthcheck:
+      test: [CMD, pg_isready, -U, dash, -d, dash]
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: redis:8-alpine
+    command: [--appendonly, "yes", --appendfsync, everysec]
+    volumes:
+      - redis:/data
+    ports:
+      - 127.0.0.1:6379:6379
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      retries: 30
+
+  # The chart runs this as the API's init container.
+  migrate:
+    <<: *dash
+    command: [dash, migrate]
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *dash
+    command: [dash, serve, --host, 0.0.0.0, --port, "8000"]
+    ports:
+      - 127.0.0.1:8000:8000
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    <<: *dash
+    command: [dash, worker]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  webui:
+    build:
+      context: .
+      dockerfile: webui/Dockerfile
+    image: dash-webui:local
+    environment:
+      DASH_API_URL: http://api:8000
+    ports:
+      - 127.0.0.1:8080:8080
+    depends_on: [api]
+
+  fake-hermes:
+    build: .
+    image: dash:local
+    command: [uvicorn, fake_hermes:app, --host, 0.0.0.0, --port, "8642", --app-dir, /opt/dev]
+    volumes:
+      - ./dev:/opt/dev:ro
+    ports:
+      - 127.0.0.1:8642:8642
+
+  nango:
+    image: nangohq/nango-server:hosted
+    environment:
+      SERVER_RUN_MODE: DOCKERIZED
+      SERVER_PORT: "3003"
+      NANGO_DATABASE_URL: postgresql://dash:dash@postgres:5432/nango
+      NANGO_ENCRYPTION_KEY: ${NANGO_ENCRYPTION_KEY:-}  # required; see .env.example
+      NANGO_REDIS_URL: redis://redis:6379/1
+      NANGO_SERVER_URL: http://localhost:3003
+      NANGO_PUBLIC_CONNECT_URL: http://localhost:3009
+      FLAG_SERVE_CONNECT_UI: "true"
+      FLAG_AUTH_ENABLED: "false"
+      NANGO_DASHBOARD_USERNAME: admin
+      NANGO_DASHBOARD_PASSWORD: ${NANGO_DASHBOARD_PASSWORD:-change-me}
+      TELEMETRY: "false"
+    ports:
+      - 127.0.0.1:3003:3003
+      - 127.0.0.1:3009:3009
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+volumes:
+  postgres:
+  redis:

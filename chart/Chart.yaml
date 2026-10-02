@@ -1,0 +1,9 @@
+apiVersion: v2
+name: dash
+description: >-
+  Always-on assistant in front of hermes-agent. Web UI + API, a Redis-streams
+  job queue and worker, pgvector memories on RDS, and a self-hosted Nango that
+  holds OAuth app keys. Packaged with the app in whatever/dash.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

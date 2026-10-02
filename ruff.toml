@@ -1,0 +1,32 @@
+line-length = 100
+src = ["src", "tests"]
+
+[lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # isort
+    "UP",      # pyupgrade
+    "B",       # bugbear
+    "S",       # bandit security rules
+    "SIM",     # simplify
+    "PT",      # pytest style
+    "RUF",     # ruff-specific
+    "ERA",     # commented-out code
+    "C4",      # comprehensions
+    "PIE",     # misc lints
+    "RET",     # return statements
+    "PTH",     # prefer pathlib
+    "ASYNC",   # blocking calls in async functions
+    "BLE",     # blind `except Exception`
+    "DTZ",     # datetimes without a time zone
+    "T10",     # leftover debugger calls
+    "PLE",     # pylint errors
+    "PLW",     # pylint warnings, for example a loop variable that is overwritten
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["S101"]  # assert is normal in tests
+
+[format]
+quote-style = "double"
