@@ -14,13 +14,19 @@ from sqlalchemy import (
     ForeignKey,
     Identity,
     Text,
+    UniqueConstraint,
     delete,
     func,
     select,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.engine import CursorResult, make_url
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 MIGRATIONS = Path(__file__).parent / "migrations"
@@ -69,6 +75,28 @@ class Memory(Base):
     )
 
 
+class Authorization(Base):
+    """A credential set for an external provider, such as a GitHub App or installation."""
+
+    __tablename__ = "authorizations"
+    __table_args__ = (UniqueConstraint("provider", "kind", "external_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    provider: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    external_id: Mapped[str] = mapped_column(Text)
+    parent_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("authorizations.id", ondelete="CASCADE"), index=True
+    )
+    account: Mapped[str] = mapped_column(Text)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    secrets: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 def async_url(url: str) -> str:
     # Most tooling hands out postgresql:// DSNs; SQLAlchemy needs the driver named.
     return make_url(url).set(drivername="postgresql+asyncpg").render_as_string(hide_password=False)
@@ -105,6 +133,11 @@ class Store:
             yield store
         finally:
             await store.close()
+
+    @property
+    def sessions(self) -> async_sessionmaker[AsyncSession]:
+        """Return the session factory for feature stores that share this engine."""
+        return self._session
 
     async def close(self) -> None:
         await self._engine.dispose()
