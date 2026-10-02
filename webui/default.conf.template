@@ -23,7 +23,7 @@ server {
     location /api/ {
         proxy_pass ${DASH_API_URL};
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
         # /api/jobs/<id>/events is SSE: no buffering, and long reads for agent turns.
@@ -31,5 +31,13 @@ server {
         proxy_cache off;
         proxy_read_timeout 900s;
         client_max_body_size 1m;
+    }
+
+    location /github/ {
+        proxy_pass ${DASH_API_URL};
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
     }
 }

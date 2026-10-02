@@ -3,7 +3,11 @@ import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime
 
-from dash.db import Conversation, Memory, Message
+from dash.db import Authorization, Conversation, Memory, Message
+from dash.github.api import Installation, NewApp
+from dash.github.db import APP, INSTALLATION, PROVIDER
+
+CLIENT_SECRET = "fake-client-secret"  # noqa: S105
 
 
 class FakeStore:
@@ -95,3 +99,89 @@ class FakeChat:
             yield chunk
         if self.fail:
             raise RuntimeError("upstream down")
+
+
+class FakeGitHubStore:
+    """An in-memory GitHubStore."""
+
+    def __init__(self) -> None:
+        self.rows: list[Authorization] = []
+        self._ids = itertools.count(1)
+
+    async def apps(self) -> list[Authorization]:
+        """Return every stored app."""
+        return [r for r in self.rows if r.kind == APP]
+
+    async def installations(self) -> list[Authorization]:
+        """Return every stored installation."""
+        return [r for r in self.rows if r.kind == INSTALLATION]
+
+    async def save_app(self, app: NewApp) -> Authorization:
+        """Store the given app and return its row."""
+        row = Authorization(
+            id=next(self._ids),
+            provider=PROVIDER,
+            kind=APP,
+            external_id=str(app.id),
+            account=app.owner,
+            details={
+                "slug": app.slug,
+                "name": app.name,
+                "html_url": app.html_url,
+                "client_id": app.client_id,
+            },
+            secrets={"pem": app.pem, "client_secret": app.client_secret},
+        )
+        self.rows.append(row)
+        return row
+
+    async def save_installations(
+        self, app: Authorization, installations: Sequence[Installation]
+    ) -> None:
+        """Replace the installations of the given app."""
+        self.rows = [r for r in self.rows if r.parent_id != app.id] + [
+            Authorization(
+                id=next(self._ids),
+                provider=PROVIDER,
+                kind=INSTALLATION,
+                external_id=str(i.id),
+                parent_id=app.id,
+                account=i.account,
+                details={"html_url": i.html_url},
+                secrets={},
+            )
+            for i in installations
+        ]
+
+    async def delete_app(self, app_id: int) -> bool:
+        """Delete the given app and its installations. Return True if it existed."""
+        before = len(self.rows)
+        self.rows = [r for r in self.rows if app_id not in (r.id, r.parent_id)]
+        return len(self.rows) < before
+
+
+class FakeGitHubApi:
+    """A GitHub API that returns fixed apps and installations."""
+
+    def __init__(self, installations: list[Installation]) -> None:
+        self.installs = installations
+        self.codes: list[str] = []
+
+    async def convert_manifest(self, code: str) -> NewApp:
+        """Return a fixed new app for the given code."""
+        self.codes.append(code)
+        return NewApp(
+            id=123,
+            slug="dash-test",
+            name="dash test",
+            owner="octocat",
+            html_url="https://github.com/apps/dash-test",
+            client_id="Iv1.abc",
+            client_secret=CLIENT_SECRET,
+            webhook_secret=None,
+            pem="fake-pem",
+        )
+
+    async def installations(self, app: Authorization) -> list[Installation]:
+        """Return the fixed installations."""
+        return self.installs

@@ -45,6 +45,14 @@
       <p class="hint">Connected apps keep their OAuth tokens in Nango. Hermes uses them through the <code>nango</code> skill.</p>
       <button id="connect">+ Connect an app</button>
       <ul id="app-list"></ul>
+      <h2>GitHub</h2>
+      <p class="hint">dash creates a private GitHub App for you. Then you install it on the accounts that hermes can use.</p>
+      <form id="github-create">
+        <input id="github-org" placeholder="Organization (empty for your personal account)">
+        <button type="submit">+ Create GitHub App</button>
+        <button type="button" id="github-sync">Refresh</button>
+      </form>
+      <ul id="github-list"></ul>
     </section>
   </main>
 

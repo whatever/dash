@@ -1,12 +1,12 @@
 import json
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -49,6 +49,7 @@ def create_app(
     embedder: Embedder,
     nango: Nango,
     public: dict[str, str] | None = None,
+    routers: Sequence[APIRouter] = (),
     lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="dash", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -156,12 +157,16 @@ def create_app(
         need_nango()
         await nango.delete_connection(connection_id, provider_config_key)
 
+    for router in routers:
+        app.include_router(router)
+
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     return app
 
 
 def create_production_app() -> FastAPI:
     """uvicorn factory: wires real Postgres, Redis, Bedrock and Nango from the environment."""
+    from dash.github import GitHubApi, GitHubStore, create_router
     from dash.memory import Bedrock
 
     settings = Settings.from_env()
@@ -185,5 +190,12 @@ def create_production_app() -> FastAPI:
             "nango_host": settings.nango_public_url or settings.nango_url,
             "nango_connect_url": settings.nango_connect_url,
         },
+        routers=[
+            create_router(
+                store=GitHubStore(store.sessions),
+                api=GitHubApi(),
+                public_url=settings.public_url,
+            )
+        ],
         lifespan=lifespan,
     )

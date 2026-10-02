@@ -12,6 +12,7 @@ def _env(name: str, default: str | None = None) -> str:
 @dataclass(frozen=True)
 class Settings:
     database_url: str
+    public_url: str
     redis_url: str
     hermes_base_url: str
     hermes_api_key: str
@@ -28,6 +29,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         return cls(
             database_url=_env("DATABASE_URL"),
+            public_url=_env("PUBLIC_URL", "").rstrip("/"),
             redis_url=_env("REDIS_URL", "redis://localhost:6379/0"),
             hermes_base_url=_env("HERMES_BASE_URL", "http://localhost:8642/v1").rstrip("/"),
             hermes_api_key=_env("HERMES_API_KEY", ""),

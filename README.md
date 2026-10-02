@@ -9,6 +9,7 @@ An always-on assistant in front of [hermes-agent](https://github.com/whatever/ge
 | Worker (`dash worker`) | Reads `dash:jobs`, recalls memories from pgvector, and streams the hermes reply. Then it extracts new memories. |
 | Memories | Postgres + pgvector. Bedrock Titan v2 makes the embeddings. Bedrock Haiku extracts the facts. |
 | App keys | A self-hosted [Nango](https://nango.dev). Nango holds the OAuth tokens. dash and hermes ask Nango for them. |
+| GitHub (`src/dash/github`) | Creates a private GitHub App from a manifest and stores its keys in the `authorizations` table. Use `app_client` and `installation_client` to call GitHub. |
 
 The browser follows a reply through `GET /api/jobs/<id>/events` (SSE). The worker writes each reply to its own Redis stream, so a page reload replays the reply from the start.
 
@@ -37,12 +38,24 @@ uv run dash serve
 
 The worker needs AWS credentials for Bedrock in the standard env chain. Outside Docker, Nango is optional. To use it, set `NANGO_URL` and `NANGO_SECRET_KEY`.
 
+## GitHub
+
+In the Apps tab, click **Create GitHub App**. Type an organization, or leave it empty for your personal account.
+
+1. dash sends a manifest to GitHub. The manifest has the name, permissions, and redirect URLs.
+2. On GitHub, you confirm the app. GitHub sends you back to `/github/callback` with a code.
+3. dash exchanges the code for the app ID, private key, client secret, and webhook secret. Then it stores them.
+4. GitHub opens the install page. After you install, `/github/setup` copies the installations from GitHub.
+
+dash stores the private key and secrets as plain JSONB. Protect the database.
+
 ## Settings
 
 | Env var | Default |
 |---|---|
 | `DATABASE_URL` | (required) |
 | `REDIS_URL` | `redis://localhost:6379/0` |
+| `PUBLIC_URL` | Browser-facing dash address for GitHub redirects. Empty means the request address. |
 | `HERMES_BASE_URL`, `HERMES_API_KEY`, `HERMES_MODEL` | `http://localhost:8642/v1`, empty, `hermes-opus` |
 | `NANGO_URL`, `NANGO_SECRET_KEY` | `http://localhost:3003`, empty (disabled) |
 | `NANGO_PUBLIC_URL`, `NANGO_CONNECT_URL` | Browser-facing Nango API and Connect UI addresses |

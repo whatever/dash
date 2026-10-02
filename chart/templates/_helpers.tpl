@@ -21,6 +21,8 @@ redis://dash-redis:6379/0
       key: {{ .Values.secrets.databaseUrlKey }}
 - name: REDIS_URL
   value: {{ include "dash.redisUrl" . | quote }}
+- name: PUBLIC_URL
+  value: https://{{ .Values.ingress.host }}
 - name: HERMES_BASE_URL
   value: {{ .Values.hermes.baseUrl | quote }}
 - name: HERMES_MODEL

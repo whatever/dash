@@ -24,7 +24,10 @@ document.querySelectorAll("nav button").forEach((btn) =>
     btn.classList.add("active");
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
     if (btn.dataset.tab === "memories") loadMemories();
-    if (btn.dataset.tab === "apps") loadApps();
+    if (btn.dataset.tab === "apps") {
+      loadApps();
+      loadGitHub();
+    }
   }),
 );
 
@@ -186,6 +189,42 @@ $("#connect").addEventListener("click", async () => {
   });
 });
 
+// GitHub Apps
+function renderGitHub({ apps }) {
+  $("#github-list").replaceChildren(
+    ...apps.map((a) => {
+      const install = el("a", { href: `${a.html_url}/installations/new`, textContent: "Install" });
+      const forget = el("button", { textContent: "Forget" });
+      forget.addEventListener("click", async () => {
+        await api(`/api/github/apps/${a.id}`, { method: "DELETE" });
+        loadGitHub();
+      });
+      const accounts = a.installations.map((i) => i.account).join(", ") || "not installed";
+      const meta = `${a.owner} · app ${a.app_id} · ${accounts}`;
+      const name = el("a", { href: a.html_url, textContent: a.name, target: "_blank" });
+      return el("li", {}, el("div", {}, name, el("div", { className: "meta", textContent: meta })), el("div", {}, install, " ", forget));
+    }),
+  );
+  if (!apps.length) $("#github-list").append(el("li", { textContent: "No GitHub Apps yet." }));
+}
+
+async function loadGitHub() {
+  renderGitHub(await api("/api/github"));
+}
+
+$("#github-sync").addEventListener("click", async () => {
+  renderGitHub(await api("/api/github/sync", { method: "POST" }));
+});
+
+$("#github-create").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const org = $("#github-org").value.trim() || null;
+  const { action, manifest } = await api("/api/github/manifest", { method: "POST", body: { org } });
+  const form = el("form", { method: "post", action }, el("input", { type: "hidden", name: "manifest", value: manifest }));
+  document.body.append(form);
+  form.submit();
+});
+
 // Queue badge
 async function pollQueue() {
   try {
@@ -201,5 +240,6 @@ state.config = await api("/api/config");
 const list = await loadConversations();
 const last = localStorage.getItem("conversation");
 if (last && list.some((c) => c.id === last)) openConversation(last);
+if (location.hash === "#apps") document.querySelector('nav button[data-tab="apps"]').click();
 pollQueue();
 setInterval(pollQueue, 5000);
