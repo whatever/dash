@@ -1,5 +1,6 @@
 # Local stack for dash. Same parts as chart/, with local stand-ins:
-#   RDS → postgres (pgvector), hermes-router → fake-hermes (unless .env says otherwise).
+#   RDS → postgres (pgvector), hermes-router → hermes-agent → litellm → Bedrock.
+#   hermes-agent runs terminal commands over ssh in the sandbox container.
 #
 #   cp .env.example .env   # optional; see the comments in it
 #   docker compose up --build
@@ -8,24 +9,28 @@
 #   http://localhost:8000   dash (served by the API)
 #   http://localhost:8080   dash through the nginx webui image
 #   http://localhost:3003   Nango dashboard (needs NANGO_ENCRYPTION_KEY in .env)
+#   http://localhost:8642   hermes-agent API
+#   http://localhost:4000   LiteLLM (needs AWS credentials that can call Bedrock)
+
+x-aws-env: &aws-env
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  AWS_PROFILE: ${AWS_PROFILE:-}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_CONFIG_FILE: /aws/config
+  AWS_SHARED_CREDENTIALS_FILE: /aws/credentials
 
 x-dash-env: &dash-env
+  <<: *aws-env
   DATABASE_URL: postgresql://dash:dash@postgres:5432/dash
   REDIS_URL: redis://redis:6379/0
-  HERMES_BASE_URL: ${HERMES_BASE_URL:-http://fake-hermes:8642/v1}
-  HERMES_API_KEY: ${HERMES_API_KEY:-}
+  HERMES_BASE_URL: ${HERMES_BASE_URL:-http://hermes-agent:8642/v1}
+  HERMES_API_KEY: ${HERMES_API_KEY:-sk-local}
   HERMES_MODEL: ${HERMES_MODEL:-hermes-opus}
   NANGO_URL: http://nango:3003
   NANGO_PUBLIC_URL: http://localhost:3003
   NANGO_CONNECT_URL: http://localhost:3009
   NANGO_SECRET_KEY: ${NANGO_SECRET_KEY:-}
-  AWS_REGION: ${AWS_REGION:-us-east-1}
-  AWS_PROFILE: ${AWS_PROFILE:-}
-  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-  # The image's `app` user has no home, so point boto3 at the mounted ~/.aws.
-  AWS_CONFIG_FILE: /aws/config
-  AWS_SHARED_CREDENTIALS_FILE: /aws/credentials
 
 x-dash: &dash
   build: .
@@ -99,14 +104,88 @@ services:
       - 127.0.0.1:8080:8080
     depends_on: [api]
 
-  fake-hermes:
-    build: .
-    image: dash:local
-    command: [uvicorn, fake_hermes:app, --host, 0.0.0.0, --port, "8642", --app-dir, /opt/dev]
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    entrypoint: [sh, -c]
+    command:
+      - pip install --no-cache-dir --quiet 'anthropic>=0.39.0' && exec litellm --config /etc/litellm/config.yaml --port 4000
+    environment:
+      <<: *aws-env
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local}
+      DISABLE_ADMIN_UI: "True"
+      NO_DOCS: "True"
     volumes:
-      - ./dev:/opt/dev:ro
+      - ./dev/litellm.yaml:/etc/litellm/config.yaml:ro
+      - ${HOME}/.aws:/aws:ro
+    ports:
+      - 127.0.0.1:4000:4000
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
+      interval: 5s
+      start_period: 30s
+      retries: 30
+    restart: unless-stopped
+
+  hermes-seed:
+    image: alpine:3.20
+    command: [/seed.sh]
+    environment:
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-local}
+    volumes:
+      - ./dev/hermes-seed.sh:/seed.sh:ro
+      - ./dev/hermes-config.yaml:/etc/hermes/config.yaml:ro
+      - hermes:/opt/data
+      - hermes-ssh:/opt/data/.ssh
+    restart: "no"
+
+  sandbox:
+    image: lscr.io/linuxserver/openssh-server:10.2_p1-r0-ls226
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: Etc/UTC
+      USER_NAME: agent
+      SUDO_ACCESS: "true"
+      PASSWORD_ACCESS: "false"
+      PUBLIC_KEY_FILE: /keys/id_ed25519.pub
+    volumes:
+      - sandbox:/config
+      - hermes-ssh:/keys:ro
+      - ./dev/sandbox-init.sh:/custom-cont-init.d/10-tools:ro
+    healthcheck:
+      test: [CMD, nc, -z, localhost, "2222"]
+      interval: 5s
+      retries: 30
+    depends_on:
+      hermes-seed: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  hermes-agent:
+    image: nousresearch/hermes-agent:v2026.8.27
+    command: [gateway, run, --replace]
+    environment:
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_MODEL_NAME: hermes-opus
+      API_SERVER_KEY: ${HERMES_API_KEY:-sk-local}
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-local}
+      TMPDIR: /opt/data/cache/vision-tmp
+    volumes:
+      - hermes:/opt/data
+      - hermes-ssh:/opt/data/.ssh
+      - hermes-workspace:/config/workspace
     ports:
       - 127.0.0.1:8642:8642
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8642/health')"]
+      interval: 5s
+      start_period: 20s
+      retries: 30
+    depends_on:
+      hermes-seed: { condition: service_completed_successfully }
+      litellm: { condition: service_healthy }
+      sandbox: { condition: service_healthy }
+    restart: unless-stopped
 
   nango:
     image: nangohq/nango-server:hosted
@@ -133,3 +212,7 @@ services:
 volumes:
   postgres:
   redis:
+  hermes:
+  hermes-ssh:
+  hermes-workspace:
+  sandbox:

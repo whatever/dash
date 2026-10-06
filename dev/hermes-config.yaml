@@ -1,0 +1,39 @@
+# Seeded to /opt/data/config.yaml on every start. Hermes ignores
+# OPENAI_BASE_URL, so routing to LiteLLM lives here.
+model:
+  default: hermes-opus
+  provider: custom
+  base_url: http://litellm:4000/v1
+  api_key: ${OPENAI_API_KEY}
+
+agent:
+  reasoning_effort: low
+  api_max_retries: 1
+
+logging:
+  level: info
+
+terminal:
+  backend: ssh
+  cwd: /config/workspace
+  timeout: 90
+  lifetime_seconds: 300
+  ssh_host: sandbox
+  ssh_user: agent
+  ssh_port: 2222
+  ssh_key: /opt/data/.ssh/id_ed25519
+
+toolsets:
+  - file
+  - terminal
+  - web
+  - skills
+  - delegation
+  - memory
+  - session_search
+  - todo
+  - code_execution
+  - vision
+
+security:
+  tirith_enabled: false
