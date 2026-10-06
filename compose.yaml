@@ -12,6 +12,8 @@
 #   http://localhost:8642   hermes-agent API
 #   http://localhost:4000   LiteLLM (needs AWS credentials that can call Bedrock)
 
+name: dashes
+
 x-aws-env: &aws-env
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_PROFILE: ${AWS_PROFILE:-}
@@ -25,7 +27,7 @@ x-dash-env: &dash-env
   DATABASE_URL: postgresql://dash:dash@postgres:5432/dash
   REDIS_URL: redis://redis:6379/0
   HERMES_BASE_URL: ${HERMES_BASE_URL:-http://hermes-agent:8642/v1}
-  HERMES_API_KEY: ${HERMES_API_KEY:-sk-local}
+  HERMES_API_KEY: ${HERMES_API_KEY:-sk-local-hermes-dev}
   HERMES_MODEL: ${HERMES_MODEL:-hermes-opus}
   NANGO_URL: http://nango:3003
   NANGO_PUBLIC_URL: http://localhost:3003
@@ -106,9 +108,7 @@ services:
 
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
-    entrypoint: [sh, -c]
-    command:
-      - pip install --no-cache-dir --quiet 'anthropic>=0.39.0' && exec litellm --config /etc/litellm/config.yaml --port 4000
+    command: [--config, /etc/litellm/config.yaml, --port, "4000"]
     environment:
       <<: *aws-env
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local}
@@ -167,7 +167,7 @@ services:
       API_SERVER_ENABLED: "true"
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_MODEL_NAME: hermes-opus
-      API_SERVER_KEY: ${HERMES_API_KEY:-sk-local}
+      API_SERVER_KEY: ${HERMES_API_KEY:-sk-local-hermes-dev}
       OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-local}
       TMPDIR: /opt/data/cache/vision-tmp
     volumes:
