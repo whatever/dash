@@ -81,30 +81,29 @@ jobs:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: echo "tag=$(grep -o 'sha-[0-9a-f]*$' <<<"$TAGS" | head -1)" >> "$GITHUB_OUTPUT"
 
-  # Package chart/ and push it to ghcr.io/whatever/charts/dash as an OCI
-  # artifact. The chart version is Chart.yaml's version plus the image sha,
-  # and the default image is pinned to that sha.
-  publish-chart:
+  # Ask geometry.dev to open a PR that bumps apps/dash to this image.
+  # ArgoCD deploys it when that PR merges.
+  notify-geometry:
     needs: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.publish.outputs.sha-tag != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: read
-      packages: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app
         with:
-          persist-credentials: false
-      - name: Package and push
+          client-id: ${{ vars.GEOMETRY_BUMP_CLIENT_ID }}
+          private-key: ${{ secrets.GEOMETRY_BUMP_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: geometry.dev
+      - name: Send image-published
         env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           SHA_TAG: ${{ needs.publish.outputs.sha-tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          base=$(grep '^version:' chart/Chart.yaml | awk '{print $2}')
-          version="$base-$SHA_TAG"
-          sed -i -E "s#^image: .*#image: ghcr.io/${{ github.repository }}:$SHA_TAG#" chart/values.yaml
-          helm lint chart
-          helm package chart --version "$version" --app-version "$SHA_TAG"
-          echo "$GH_TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          helm push "dash-$version.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
+          gh api "repos/${{ github.repository_owner }}/geometry.dev/dispatches" \
+            -f event_type=image-published \
+            -f "client_payload[app]=dash" \
+            -f "client_payload[image]=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
+            -f "client_payload[tag]=$SHA_TAG" \
+            -f "client_payload[source_sha]=${{ github.sha }}"
