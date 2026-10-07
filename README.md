@@ -63,16 +63,17 @@ dash stores the private key and secrets as plain JSONB. Protect the database.
 
 ## Deploy
 
-`chart/` holds the Helm chart. It deploys the API, the worker, Redis (AOF), Nango, ExternalSecrets, and the Traefik ingress. On each push to `main`, CI does two things:
+ArgoCD deploys dash from the Kustomize manifests in [`whatever/geometry.dev/apps/dash`](https://github.com/whatever/geometry.dev/tree/main/apps/dash). They run the API, the worker, Redis (AOF), Nango, ExternalSecrets, and the Traefik ingress. `compose.yaml` is the reference for these parts.
+
+On each push to `main`, CI does these steps:
 1. It publishes the image `ghcr.io/whatever/dash:sha-<short>`.
-2. It publishes the chart to `oci://ghcr.io/whatever/charts/dash`, with version `<chart version>-sha-<short>` and that image as the default.
+2. It sends an `image-published` dispatch to geometry.dev.
+3. geometry.dev opens a PR that bumps the image tag in `apps/dash`.
+4. When that PR merges, ArgoCD syncs the new image.
 
-```sh
-helm install dash oci://ghcr.io/whatever/charts/dash --version 0.1.0-sha-abc1234 -n dash --create-namespace
-kubectl label namespace dash geometry.dev/geometry-config=true
-```
+CI needs the `GEOMETRY_BUMP_CLIENT_ID` variable and the `GEOMETRY_BUMP_APP_KEY` secret. The GitHub App must be installed on geometry.dev with contents write access.
 
-Before you install, do these steps:
+Before the first sync, do these steps:
 1. On RDS, as the master user, create the `dash` and `nango` databases. Then run `CREATE EXTENSION vector` in `dash`.
 2. Add `DASH_DATABASE_URL` and `NANGO_DATABASE_URL` to `geometry/config`.
 3. Create `geometry/dash` with `NANGO_ENCRYPTION_KEY` and `NANGO_DASHBOARD_PASSWORD`. Make the key with `openssl rand -base64 32`. Do not rotate it.

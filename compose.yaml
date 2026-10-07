@@ -1,4 +1,4 @@
-# Local stack for dash. Same parts as chart/, with local stand-ins:
+# Local stack for dash. Same parts as geometry.dev/apps/dash, with local stand-ins:
 #   RDS → postgres (pgvector), hermes-router → hermes-agent → litellm → Bedrock.
 #   hermes-agent runs terminal commands over ssh in the sandbox container.
 #
@@ -71,7 +71,7 @@ services:
       interval: 2s
       retries: 30
 
-  # The chart runs this as the API's init container.
+  # The cluster runs this as the API's init container.
   migrate:
     <<: *dash
     command: [dash, migrate]
