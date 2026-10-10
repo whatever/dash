@@ -65,7 +65,7 @@ function bubble(role, text) {
 async function openConversation(id) {
   state.conversation = id;
   localStorage.setItem("conversation", id);
-  setConversationsOpen(false);
+  document.querySelector('nav button[data-tab="chat"]').click();
   const messages = await api(`/api/conversations/${id}/messages`);
   $("#messages").replaceChildren();
   messages.forEach((m) => bubble(m.role, m.content));
