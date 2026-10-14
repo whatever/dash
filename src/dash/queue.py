@@ -1,17 +1,20 @@
 """Redis streams job queue.
 
-`dash:jobs` holds one entry per user turn, read by the `workers` consumer group.
+`dash:jobs` holds one entry per job, read by the `workers` consumer group. A job's
+`kind` is `chat` (answer a conversation's last user turn) or `update` (a
+real-world item from `dash scrape` to remember).
 Each job also gets its own `dash:events:<job>` stream. The worker appends deltas
 there and the API replays it to the browser over SSE, so a page reload mid-reply
 picks up from the start.
 """
 
 import contextlib
+import hashlib
 import json
 import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
-from typing import Any, cast
+from dataclasses import dataclass, field
+from typing import Any, Protocol, cast
 
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -23,17 +26,33 @@ EVENTS_TTL_SECONDS = 3600
 CLAIM_IDLE_MS = 5 * 60 * 1000
 # Must stay above the longest XREAD block below.
 SOCKET_TIMEOUT_SECONDS = 30
+# How long `dash scrape` remembers an item it already enqueued.
+SEEN_TTL_SECONDS = 30 * 24 * 3600
+CHAT = "chat"
+UPDATE = "update"
 
 
 def events_key(job_id: str) -> str:
     return f"dash:events:{job_id}"
 
 
+class Keyed(Protocol):
+    source: str
+    key: str
+
+
+def seen_key(item: Keyed) -> str:
+    digest = hashlib.sha256(f"{item.source}\0{item.key}".encode()).hexdigest()
+    return f"dash:seen:{digest}"
+
+
 @dataclass(frozen=True)
 class Job:
     entry_id: str
     job_id: str
-    conversation_id: str
+    conversation_id: str = ""
+    kind: str = CHAT
+    data: dict[str, Any] = field(default_factory=dict[str, Any])
 
 
 class Queue:
@@ -52,8 +71,22 @@ class Queue:
 
     async def enqueue(self, conversation_id: str) -> str:
         job_id = uuid.uuid4().hex
-        await self.redis.xadd(JOBS, {"job_id": job_id, "conversation_id": conversation_id})
+        await self.redis.xadd(
+            JOBS, {"job_id": job_id, "kind": CHAT, "conversation_id": conversation_id}
+        )
         return job_id
+
+    async def enqueue_update(self, item: dict[str, Any]) -> str:
+        job_id = uuid.uuid4().hex
+        await self.redis.xadd(JOBS, {"job_id": job_id, "kind": UPDATE, "data": json.dumps(item)})
+        return job_id
+
+    async def seen(self, item: Keyed) -> bool:
+        return bool(await self.redis.exists(seen_key(item)))
+
+    async def mark_seen(self, item: Keyed) -> bool:
+        """Record an item; False if it was already recorded."""
+        return bool(await self.redis.set(seen_key(item), "1", nx=True, ex=SEEN_TTL_SECONDS))
 
     async def ensure_group(self) -> None:
         try:
@@ -77,7 +110,14 @@ class Queue:
         if not entries:
             return None
         entry_id, fields = entries[0]
-        return Job(entry_id, fields["job_id"], fields["conversation_id"])
+        return Job(
+            entry_id,
+            fields["job_id"],
+            fields.get("conversation_id", ""),
+            # Entries from before job kinds are chat turns.
+            fields.get("kind", CHAT),
+            json.loads(fields.get("data", "{}")),
+        )
 
     async def ack(self, job: Job) -> None:
         await self.redis.xack(JOBS, GROUP, job.entry_id)
