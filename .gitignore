@@ -219,3 +219,4 @@ __marimo__/
 
 # Local k8s keys and secrets (just k8s-up)
 .local/
+charts/dash/values-local.yaml
