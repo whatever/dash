@@ -27,7 +27,13 @@ RETRY_SECONDS = 2
 
 
 class Chat(Protocol):
-    def stream(self, messages: Sequence[Mapping[str, str]]) -> AsyncIterator[str]: ...
+    def stream(
+        self, messages: Sequence[Mapping[str, str]], env: Mapping[str, str] | None = None
+    ) -> AsyncIterator[str]: ...
+
+
+class Credentials(Protocol):
+    async def env(self) -> dict[str, str]: ...
 
 
 class Worker:
@@ -40,6 +46,7 @@ class Worker:
         embedder: Embedder,
         extractor: Extractor,
         top_k: int,
+        credentials: Credentials | None = None,
     ) -> None:
         self.store = store
         self.queue = queue
@@ -47,6 +54,7 @@ class Worker:
         self.embedder = embedder
         self.extractor = extractor
         self.top_k = top_k
+        self.credentials = credentials
         self.name = f"{socket.gethostname()}-{uuid.uuid4().hex[:6]}"
 
     async def recall(self, text: str) -> list[str]:
@@ -57,6 +65,16 @@ class Worker:
             log.exception("memory recall failed")
             return []
         return [m.content for m, dist in hits if dist <= RELEVANT_DISTANCE]
+
+    async def env(self) -> dict[str, str]:
+        """Return the env that hermes forwards to the sandbox for this run."""
+        if self.credentials is None:
+            return {}
+        try:
+            return await self.credentials.env()
+        except Exception:
+            log.exception("credential mint failed")
+            return {}
 
     async def remember(self, user: str, assistant: str) -> int:
         stored = 0
@@ -92,7 +110,7 @@ class Worker:
         reply: list[str] = []
         buffer = ""
         try:
-            async for delta in self.chat.stream(messages):
+            async for delta in self.chat.stream(messages, await self.env()):
                 reply.append(delta)
                 buffer += delta
                 if len(buffer) >= FLUSH_CHARS:

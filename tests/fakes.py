@@ -92,9 +92,13 @@ class FakeChat:
         self.chunks = chunks
         self.fail = fail
         self.seen: list[list[dict[str, str]]] = []
+        self.envs: list[dict[str, str]] = []
 
-    async def stream(self, messages: Sequence[Mapping[str, str]]) -> AsyncIterator[str]:
+    async def stream(
+        self, messages: Sequence[Mapping[str, str]], env: Mapping[str, str] | None = None
+    ) -> AsyncIterator[str]:
         self.seen.append([dict(m) for m in messages])
+        self.envs.append(dict(env or {}))
         for chunk in self.chunks:
             yield chunk
         if self.fail:
@@ -185,3 +189,20 @@ class FakeGitHubApi:
     async def installations(self, app: Authorization) -> list[Installation]:
         """Return the fixed installations."""
         return self.installs
+
+    async def installation_token(self, app: Authorization, installation: Authorization) -> str:
+        """Return a fake token that names the app and installation."""
+        return f"ghs_{app.external_id}_{installation.external_id}"
+
+
+class FakeCredentials:
+    """Credentials that return a fixed env, or raise."""
+
+    def __init__(self, env: dict[str, str] | None = None) -> None:
+        self._env = env
+
+    async def env(self) -> dict[str, str]:
+        """Return the fixed env, or raise if there is none."""
+        if self._env is None:
+            raise RuntimeError("GitHub down")
+        return self._env

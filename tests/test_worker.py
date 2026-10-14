@@ -9,11 +9,11 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from dash.db import Store
 from dash.queue import Job, Queue
 from dash.worker import Worker
-from tests.fakes import FakeChat, FakeEmbedder, FakeExtractor, FakeStore
+from tests.fakes import FakeChat, FakeCredentials, FakeEmbedder, FakeExtractor, FakeStore
 
 
 async def setup(
-    chat: FakeChat, facts: list[str]
+    chat: FakeChat, facts: list[str], credentials: FakeCredentials | None = None
 ) -> tuple[Worker, FakeStore, Queue, uuid.UUID, Job]:
     store = FakeStore()
     queue = Queue(fakeredis.FakeAsyncRedis(decode_responses=True))
@@ -24,6 +24,7 @@ async def setup(
         embedder=FakeEmbedder(),
         extractor=FakeExtractor(facts),
         top_k=8,
+        credentials=credentials,
     )
     conv = await store.create_conversation()
     await store.add_message(conv.id, "user", "what do I like?")
@@ -98,3 +99,23 @@ async def test_run_survives_queue_outage(monkeypatch: pytest.MonkeyPatch) -> Non
     await worker.run(stop)
 
     assert calls == 2
+
+
+async def test_credentials_are_forwarded_to_hermes() -> None:
+    chat = FakeChat(["ok"])
+    worker, _, _, _, job = await setup(chat, [], FakeCredentials({"GITHUB_TOKEN": "ghs_x"}))
+
+    await worker.handle(job)
+
+    assert chat.envs == [{"GITHUB_TOKEN": "ghs_x"}]
+
+
+async def test_credential_failure_still_answers() -> None:
+    chat = FakeChat(["ok"])
+    worker, store, queue, _, job = await setup(chat, [], FakeCredentials())
+
+    await worker.handle(job)
+
+    assert chat.envs == [{}]
+    assert (await events(queue))[-1]["kind"] == "done"
+    assert store.msgs[-1].content == "ok"

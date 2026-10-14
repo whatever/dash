@@ -11,6 +11,7 @@ from dash.db import Authorization
 from dash.github import GitHubStore, create_router, installation_client
 from dash.github.api import GitHubApi, Installation
 from dash.github.auth import STATE_COOKIE
+from dash.github.credentials import GitHubCredentials
 from tests.fakes import CLIENT_SECRET, FakeGitHubApi, FakeGitHubStore
 
 
@@ -154,3 +155,53 @@ async def test_convert_manifest_calls_github() -> None:
     new = await GitHubApi(httpx.MockTransport(handler)).convert_manifest("c0de")
 
     assert (new.id, new.owner, new.client_secret) == (123, "octocat", CLIENT_SECRET)
+
+
+async def test_installation_token_calls_github() -> None:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    pem = (
+        rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        .private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+        .decode()
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/app/installations/42/access_tokens"
+        assert request.headers["authorization"].startswith("Bearer ")
+        return httpx.Response(201, json={"token": "ghs_new", "expires_at": "2026-10-14T12:00:00Z"})
+
+    app = Authorization(
+        id=1,
+        external_id="123",
+        details={"client_id": "Iv1.abc"},
+        secrets={"pem": pem, "client_secret": CLIENT_SECRET},
+    )
+    installation = Authorization(id=2, external_id="42", parent_id=1)
+
+    token = await GitHubApi(httpx.MockTransport(handler)).installation_token(app, installation)
+
+    assert token == "ghs_new"  # noqa: S105
+
+
+async def test_credentials_mint_a_token_for_the_installation(
+    client: TestClient, store: FakeGitHubStore, api: FakeGitHubApi
+) -> None:
+    state, _ = start(client)
+    client.get("/github/callback", params={"code": "c0de", "state": state})
+    client.get("/github/setup")
+
+    env = await GitHubCredentials(cast("GitHubStore", store), api).env()
+
+    assert env == {"GITHUB_TOKEN": "ghs_123_42", "GH_TOKEN": "ghs_123_42"}
+
+
+async def test_credentials_are_empty_without_an_installation(
+    store: FakeGitHubStore, api: FakeGitHubApi
+) -> None:
+    assert await GitHubCredentials(cast("GitHubStore", store), api).env() == {}

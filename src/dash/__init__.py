@@ -43,6 +43,8 @@ def worker() -> None:
 
 async def _worker() -> None:
     from dash.db import Store
+    from dash.github import GitHubApi, GitHubStore
+    from dash.github.credentials import GitHubCredentials
     from dash.hermes import Hermes
     from dash.memory import Bedrock
     from dash.queue import Queue
@@ -66,6 +68,7 @@ async def _worker() -> None:
                 embedder=bedrock,
                 extractor=bedrock,
                 top_k=settings.memory_top_k,
+                credentials=GitHubCredentials(GitHubStore(store.sessions), GitHubApi()),
             ).run(stop)
         finally:
             await hermes.close()

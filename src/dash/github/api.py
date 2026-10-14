@@ -40,6 +40,8 @@ class Api(Protocol):
 
     async def installations(self, app: Authorization) -> list[Installation]: ...
 
+    async def installation_token(self, app: Authorization, installation: Authorization) -> str: ...
+
 
 def _login(account: SimpleUser | Enterprise | None) -> str:
     """Return the login or slug of a GitHub account."""
@@ -117,3 +119,11 @@ class GitHubApi:
             )
             async for installation in github.paginate(github.rest.apps.async_list_installations)
         ]
+
+    async def installation_token(self, app: Authorization, installation: Authorization) -> str:
+        """Return a new one-hour access token for the given installation of a GitHub App."""
+        github = app_client(app, self._transport)
+        response = await github.rest.apps.async_create_installation_access_token(
+            int(installation.external_id)
+        )
+        return response.parsed_data.token

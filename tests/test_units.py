@@ -4,7 +4,7 @@ from alembic import command
 from alembic.script import ScriptDirectory
 
 from dash.db import alembic_config, async_url
-from dash.hermes import parse_sse_line
+from dash.hermes import ENV_HEADER, Hermes, parse_sse_line
 from dash.memory import parse_facts, system_prompt
 
 URL = "postgresql://dash:p%40ss@db:5432/dash"
@@ -51,3 +51,23 @@ def test_parse_facts() -> None:
 def test_system_prompt() -> None:
     assert system_prompt([]) is None
     assert "- The user likes tea." in (system_prompt(["The user likes tea."]) or "")
+
+
+async def test_hermes_sends_env_header_only_when_given() -> None:
+    import json
+
+    import httpx
+
+    seen: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get(ENV_HEADER))
+        return httpx.Response(200, text='data: {"choices":[{"delta":{"content":"hi"}}]}\n\n')
+
+    hermes = Hermes("http://hermes/v1", "key", "m", httpx.MockTransport(handler))
+
+    assert [d async for d in hermes.stream([], {"GITHUB_TOKEN": "ghs_x"})] == ["hi"]
+    assert [d async for d in hermes.stream([])] == ["hi"]
+    assert seen[0] is not None
+    assert json.loads(seen[0]) == {"GITHUB_TOKEN": "ghs_x"}
+    assert seen[1] is None
