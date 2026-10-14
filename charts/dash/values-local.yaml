@@ -1,0 +1,53 @@
+# Rancher Desktop (k3s, Traefik, local-path). See `just k8s-up`.
+
+image:
+  repository: dash
+  tag: local
+  pullPolicy: Never
+
+scheme: http
+hosts:
+  dash: dash.localhost
+  nango: nango.localhost
+  nangoConnect: nango-connect.localhost
+  agent: dash-agent.localhost
+
+ingress:
+  basicAuth:
+    enabled: false
+
+externalSecrets:
+  enabled: false
+
+# Local-only values, not confidential. `just k8s-secrets` adds dash-bedrock
+# (AWS keys from .env) and the generated dash-agent-ssh/dash-sandbox-ssh keypair.
+secrets:
+  create: true
+  values:
+    dash:
+      NANGO_DASHBOARD_PASSWORD: change-me
+      NANGO_ENCRYPTION_KEY: 5yn/nH9SexTiv57Ii03sT3EsKcdBNMgBBvQvTWIJyHc=
+      NANGO_SECRET_KEY: b7ddfc6f-8786-43e2-b026-cf68ea753a2c
+    dash-hermes:
+      API_SERVER_KEY: sk-local-hermes-dev
+    dash-agent-env:
+      API_SERVER_KEY: sk-local-hermes-dev
+    dash-github-app:
+      GITHUB_APP_ID: ""
+      GITHUB_APP_INSTALLATION_ID: ""
+      GITHUB_APP_PRIVATE_KEY: ""
+
+postgres:
+  enabled: true
+
+nango:
+  dbSsl: "false"
+
+agent:
+  storage: 5Gi
+  dashboard:
+    enabled: false
+
+sandbox:
+  storage: 2Gi
+  ghArch: arm64
