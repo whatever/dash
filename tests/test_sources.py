@@ -128,7 +128,9 @@ def test_cli_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_cli_needs_sources() -> None:
-    result = CliRunner().invoke(dash.main, ["scrape"], env={"SCRAPE_SOURCES": ""})
+    result = CliRunner().invoke(
+        dash.main, ["scrape"], env={"SCRAPE_SOURCES": "", "DATABASE_URL": ""}
+    )
     assert result.exit_code == 2
     assert "No sources" in result.output
     bad = CliRunner().invoke(dash.main, ["scrape", "-s", "rss:x"])

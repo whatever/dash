@@ -10,9 +10,11 @@ from alembic.config import Config
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Identity,
+    Integer,
     Text,
     UniqueConstraint,
     delete,
@@ -97,6 +99,21 @@ class Authorization(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class DataSource(Base):
+    """A source that `dash scrape` checks for updates on a schedule."""
+
+    __tablename__ = "sources"
+    __table_args__ = (UniqueConstraint("kind", "target"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    kind: Mapped[str] = mapped_column(Text)
+    target: Mapped[str] = mapped_column(Text)
+    every_minutes: Mapped[int] = mapped_column(Integer)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 def async_url(url: str) -> str:

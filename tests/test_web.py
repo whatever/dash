@@ -35,6 +35,11 @@ def test_index_and_health(client: TestClient) -> None:
     assert client.get("/static/app.js").status_code == 200
 
 
+@pytest.mark.parametrize("path", ["/memories", "/apps", "/data", f"/c/{uuid.uuid4()}"])
+def test_client_routes_serve_the_index(client: TestClient, path: str) -> None:
+    assert 'src="/static/app.js"' in client.get(path).text
+
+
 def test_send_message_enqueues_job(client: TestClient, store: FakeStore) -> None:
     conv = client.post("/api/conversations").json()
 

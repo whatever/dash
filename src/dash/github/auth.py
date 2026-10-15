@@ -121,7 +121,7 @@ def create_router(*, store: GitHubStore, api: Api, public_url: str = "") -> APIR
     @router.get("/github/setup")
     async def setup() -> RedirectResponse:
         await sync()
-        return RedirectResponse("/#apps", 303)
+        return RedirectResponse("/apps", 303)
 
     @router.post("/api/github/sync")
     async def sync_now() -> dict[str, Any]:

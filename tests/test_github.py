@@ -73,7 +73,7 @@ def test_create_install_and_list(client: TestClient, store: FakeGitHubStore) -> 
 
     assert created.status_code == 303
     assert created.headers["location"] == "https://github.com/apps/dash-test/installations/new"
-    assert installed.headers["location"] == "/#apps"
+    assert installed.headers["location"] == "/apps"
     [app] = client.get("/api/github").json()["apps"]
     assert app["app_id"] == 123
     assert app["installations"] == [
