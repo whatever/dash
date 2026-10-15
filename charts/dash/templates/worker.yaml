@@ -17,7 +17,7 @@ spec:
       containers:
         - name: worker
           image: {{ include "dash.image" . }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.dash.image.pullPolicy }}
           command: [dash, worker]
           {{- include "dash.env" . | nindent 10 }}
           resources:

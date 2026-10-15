@@ -1,3 +1,4 @@
+{{- if .Values.hermes.deploy }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -80,14 +81,14 @@ spec:
               mountPath: /packages
       containers:
         - name: hermes
-          image: {{ .Values.agent.image }}
+          image: {{ .Values.hermes.image }}
           args: ["gateway", "run", "--replace"]
           env:
             - name: API_SERVER_ENABLED
               value: "true"
             - name: API_SERVER_HOST
               value: "0.0.0.0"
-            {{- if .Values.agent.dashboard.enabled }}
+            {{- if .Values.hermes.dashboard.enabled }}
             - name: HERMES_DASHBOARD
               value: "1"
             - name: HERMES_DASHBOARD_HOST
@@ -97,17 +98,17 @@ spec:
             - name: HERMES_DASHBOARD_BASIC_AUTH_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.configSecret }}
+                  name: {{ .Values.hermes.dashboard.existingSecret }}
                   key: HERMES_DASHBOARD_BASIC_AUTH_USERNAME
             - name: HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.configSecret }}
+                  name: {{ .Values.hermes.dashboard.existingSecret }}
                   key: HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH
             - name: HERMES_DASHBOARD_BASIC_AUTH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.configSecret }}
+                  name: {{ .Values.hermes.dashboard.existingSecret }}
                   key: HERMES_DASHBOARD_BASIC_AUTH_SECRET
             {{- end }}
             - name: API_SERVER_MODEL_NAME
@@ -127,7 +128,7 @@ spec:
           ports:
             - name: api
               containerPort: 8642
-            {{- if .Values.agent.dashboard.enabled }}
+            {{- if .Values.hermes.dashboard.enabled }}
             - name: dashboard
               containerPort: 9119
             {{- end }}
@@ -234,3 +235,4 @@ spec:
             items:
               - key: PUBLIC_KEY
                 path: authorized_keys
+{{- end }}

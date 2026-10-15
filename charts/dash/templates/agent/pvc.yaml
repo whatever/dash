@@ -1,3 +1,4 @@
+{{- if .Values.hermes.deploy }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -9,4 +10,5 @@ spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ .Values.agent.storage }}
+      storage: {{ .Values.hermes.storage }}
+{{- end }}
