@@ -21,6 +21,9 @@ dash:
   basicAuth:
     enabled: true
     secret: traefik-basic-auth
+  webhook:
+    enabled: false
+    secret: dash-webhook
 
 postgres:
   deploy: false
