@@ -7,7 +7,6 @@
 #
 # Then open:
 #   http://localhost:8000   dash (served by the API)
-#   http://localhost:8080   dash through the nginx webui image
 #   http://localhost:3003   Nango dashboard (needs NANGO_ENCRYPTION_KEY in .env)
 #   http://localhost:8642   hermes-agent API
 #   http://localhost:4000   LiteLLM (needs AWS credentials that can call Bedrock)
@@ -94,17 +93,6 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-
-  webui:
-    build:
-      context: .
-      dockerfile: webui/Dockerfile
-    image: dash-webui:local
-    environment:
-      DASH_API_URL: http://api:8000
-    ports:
-      - 127.0.0.1:8080:8080
-    depends_on: [api]
 
   litellm:
     image: ghcr.io/berriai/litellm:main-stable

@@ -5,7 +5,7 @@
 #        docker run --rm dash scrape
 
 # Stage 1: compile the loopy widget (webui/loopy) to JavaScript.
-# The same stage is in webui/Dockerfile. Only the platform-neutral dist/ leaves it.
+# Only the platform-neutral dist/ leaves it.
 FROM --platform=$BUILDPLATFORM node:24-alpine AS loopy
 WORKDIR /loopy
 COPY webui/loopy/package.json webui/loopy/package-lock.json ./
