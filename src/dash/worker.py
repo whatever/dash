@@ -89,6 +89,9 @@ class Worker:
         return stored
 
     async def handle(self, job: Job) -> None:
+        # Every inbound job lands on the LIVE timeline before it runs.
+        data = {"conversation_id": job.conversation_id} if job.conversation_id else job.data
+        await self.store.add_timeline(job.job_id, job.kind, data)
         if job.kind == UPDATE:
             await self.handle_update(job)
             return

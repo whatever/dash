@@ -151,3 +151,16 @@ async def test_conversation_id_is_stable_and_only_new_message_is_sent() -> None:
 
     assert [s["conversation"] for s in chat.seen] == [f"dash:{conv_id}"] * 2
     assert [s["input"] for s in chat.seen] == ["what do I like?", "and now?"]
+
+
+async def test_every_job_is_recorded_on_the_timeline() -> None:
+    worker, store, _, conv_id, job = await setup(FakeChat(["ok"]), [])
+    await worker.handle(job)
+    await worker.handle(Job("2-0", "j2", kind="update", data={"source": "web:x", "title": "T"}))
+    await worker.handle(Job("3-0", "j3", str(uuid.uuid4())))  # errors: no user message
+    rows = [(r.job_id, r.kind, r.data) for r in await store.timeline()]
+    assert rows[1:] == [
+        ("j2", "update", {"source": "web:x", "title": "T"}),
+        ("job", "chat", {"conversation_id": str(conv_id)}),
+    ]
+    assert rows[0][:2] == ("j3", "chat")

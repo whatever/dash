@@ -63,6 +63,7 @@ def create_app(
     @app.get("/memories")
     @app.get("/apps")
     @app.get("/data")
+    @app.get("/live")
     async def index() -> FileResponse:
         return FileResponse(STATIC / "index.html")
 
@@ -123,6 +124,18 @@ def create_app(
     @app.get("/api/queue")
     async def queue_status() -> dict[str, int]:
         return await queue.status()
+
+    @app.get("/api/live")
+    async def live() -> list[dict[str, Any]]:
+        return [
+            {
+                "id": e.id,
+                "kind": e.kind,
+                "data": e.data,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in await store.timeline()
+        ]
 
     @app.get("/api/memories")
     async def memories(q: str = "") -> list[dict[str, Any]]:
