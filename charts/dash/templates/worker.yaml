@@ -18,7 +18,7 @@ spec:
         - name: worker
           image: {{ include "dash.image" . }}
           imagePullPolicy: {{ .Values.dash.imagePullPolicy }}
-          command: [dash, worker]
+          args: [worker]
           {{- include "dash.env" . | nindent 10 }}
           resources:
             requests: { cpu: 20m, memory: 128Mi }

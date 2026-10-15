@@ -1,0 +1,45 @@
+{{- if and .Values.scrape.enabled .Values.scrape.sources }}
+# Schedule only: `dash scrape` fetches sources, enqueues anything new as
+# `update` jobs and exits. The worker stores them as memories.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dash-scrape
+  labels: {{- include "dash.labels" (list . "dash-scrape") | nindent 4 }}
+spec:
+  schedule: {{ .Values.scrape.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels: {{- include "dash.selectorLabels" (list . "dash-scrape") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: scrape
+              image: {{ include "dash.image" . }}
+              imagePullPolicy: {{ .Values.dash.imagePullPolicy }}
+              args: [scrape]
+              envFrom:
+                - configMapRef:
+                    name: dash-env
+              env:
+                - name: SCRAPE_SOURCES
+                  value: {{ join " " .Values.scrape.sources | quote }}
+                {{- if not .Values.redis.deploy }}
+                - name: REDIS_URL
+                  valueFrom:
+                    secretKeyRef: { name: {{ .Values.redis.existingSecret }}, key: REDIS_URL }
+                {{- end }}
+              securityContext:
+                allowPrivilegeEscalation: false
+              resources:
+                requests: { cpu: 10m, memory: 64Mi }
+                limits: { memory: 128Mi }
+{{- end }}

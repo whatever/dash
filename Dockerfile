@@ -2,6 +2,7 @@
 
 # Production image. Build: docker build -t dash .
 # Run:   docker run --rm -p 127.0.0.1:8000:8000 dash
+#        docker run --rm dash scrape
 
 # Stage 1: compile the loopy widget (webui/loopy) to JavaScript.
 # The same stage is in webui/Dockerfile. Only the platform-neutral dist/ leaves it.
@@ -55,4 +56,5 @@ USER app
 EXPOSE 8000
 
 # 0.0.0.0 inside the container. Publish the port on 127.0.0.1 only (see "Run" above).
-CMD ["dash", "serve", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["dash"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "8000"]

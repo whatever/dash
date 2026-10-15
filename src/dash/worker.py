@@ -1,4 +1,8 @@
-"""Consumes `dash:jobs`: recall memories, stream a hermes reply, store new memories."""
+"""Consumes `dash:jobs`.
+
+`chat` jobs recall memories, stream a hermes reply and store new memories.
+`update` jobs (from `dash scrape`) store a real-world item as a memory.
+"""
 
 import asyncio
 import logging
@@ -18,7 +22,8 @@ from dash.memory import (
     Extractor,
     system_prompt,
 )
-from dash.queue import Job, Queue
+from dash.queue import UPDATE, Job, Queue
+from dash.sources.common import Item
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +87,27 @@ class Worker:
         return stored
 
     async def handle(self, job: Job) -> None:
+        if job.kind == UPDATE:
+            await self.handle_update(job)
+            return
+        await self.handle_chat(job)
+
+    async def handle_update(self, job: Job) -> None:
+        item = Item.from_dict(job.data)
+        text = item.text()
+        embedding = await self.embedder.embed(text)
+        nearest = await self.store.search_memories(embedding, 1)
+        if nearest and nearest[0][1] < DUPLICATE_DISTANCE:
+            await self.queue.emit(job.job_id, "done", stored=False)
+            return
+        source_kind = item.source.split(":", 1)[0]
+        await self.store.add_memory(
+            text, embedding, source="scrape", tags=[source_kind, item.source]
+        )
+        await self.queue.emit(job.job_id, "done", stored=True)
+        log.info("stored update from %s: %s", item.source, item.title)
+
+    async def handle_chat(self, job: Job) -> None:
         conversation_id = uuid.UUID(job.conversation_id)
         history = await self.store.messages(conversation_id)
         if not history or history[-1].role != "user":

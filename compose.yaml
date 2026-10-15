@@ -74,14 +74,14 @@ services:
   # The cluster runs this as the API's init container.
   migrate:
     <<: *dash
-    command: [dash, migrate]
+    command: [migrate]
     restart: "no"
     depends_on:
       postgres: { condition: service_healthy }
 
   api:
     <<: *dash
-    command: [dash, serve, --host, 0.0.0.0, --port, "8000"]
+    command: [serve, --host, 0.0.0.0, --port, "8000"]
     ports:
       - 127.0.0.1:8000:8000
     depends_on:
@@ -90,7 +90,7 @@ services:
 
   worker:
     <<: *dash
-    command: [dash, worker]
+    command: [worker]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

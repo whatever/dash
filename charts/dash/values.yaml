@@ -107,3 +107,9 @@ externalSecrets:
 secrets:
   create: false
   values: {}
+
+# `dash scrape` on a schedule. Sources are web:<url>.
+scrape:
+  enabled: true
+  schedule: "*/30 * * * *"
+  sources: []

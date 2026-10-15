@@ -1,40 +1,21 @@
 set dotenv-load := false
 
-default:
-    @just --list
-
-[arg('open', long='open', value='true')]
-up open="" *args:
-    docker compose up --build --detach {{ if open == "true" { "--wait" } else { "" } }} {{args}}
-    {{ if open == "true" { "just browse" } else { "" } }}
-
-down:
-    docker compose down
-
-nuke:
-    docker compose down --volumes
-
-[arg('follow', short='f', long='follow', value='--follow')]
-[arg('tail', long='tail')]
-logs follow="" tail="all" *services:
-    docker compose logs {{follow}} --tail={{tail}} {{services}}
-
-ps:
-    docker compose ps
-
-browse:
-    open http://localhost:8000
+mod docker 'Justfile.docker'
 
 kube_context := "rancher-desktop"
 namespace := "dash"
 chart := "charts/dash"
 rd_socket := env("HOME") / ".rd/docker.sock"
+kubectl := "kubectl --context " + kube_context + " --namespace " + namespace
 
-k8s-build:
+default:
+    @just --list
+
+build:
     @test -S {{rd_socket}} || { echo "start Rancher Desktop (dockerd runtime): {{rd_socket}} not found" >&2; exit 1; }
     DOCKER_HOST=unix://{{rd_socket}} docker build -t dash:local .
 
-k8s-secrets:
+secrets:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p .local
@@ -58,7 +39,7 @@ k8s-secrets:
         "dash-sandbox-ssh": {PUBLIC_KEY: $public}
     }}}' > .local/secrets.json
 
-k8s-up: k8s-build k8s-secrets
+up: build secrets
     helm upgrade \
         --install dash {{chart}} \
         --kube-context {{kube_context}} \
@@ -69,23 +50,33 @@ k8s-up: k8s-build k8s-secrets
         --wait --timeout 10m
     @echo "open http://dash.localhost"
 
-reload: k8s-build
-    kubectl --context {{kube_context}} --namespace {{namespace}} rollout restart deploy/dash-api deploy/dash-worker
-    kubectl --context {{kube_context}} --namespace {{namespace}} rollout status deploy/dash-api deploy/dash-worker --timeout 5m
+reload: build
+    {{kubectl}} rollout restart deploy/dash-api deploy/dash-worker
+    {{kubectl}} rollout status deploy/dash-api deploy/dash-worker --timeout 5m
 
-k8s-down:
+scrape:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    job=scrape-$(date +%s)
+    {{kubectl}} create job --from=cronjob/dash-scrape "$job"
+    {{kubectl}} logs --follow --pod-running-timeout=2m "job/$job"
+
+down:
     helm uninstall dash --kube-context {{kube_context}} --namespace {{namespace}}
 
-k8s-nuke:
+nuke:
     -helm uninstall dash --kube-context {{kube_context}} --namespace {{namespace}}
     kubectl --context {{kube_context}} delete namespace {{namespace}} --ignore-not-found
 
-k8s-ps:
-    kubectl --context {{kube_context}} --namespace {{namespace}} get pods,pvc,ingress
+ps:
+    {{kubectl}} get pods,pvc,ingress,cronjobs,jobs
 
 [arg('follow', short='f', long='follow', value='--follow')]
-k8s-logs app follow="":
-    kubectl --context {{kube_context}} --namespace {{namespace}} logs {{follow}} --all-containers --prefix deploy/{{app}}
+logs app follow="":
+    {{kubectl}} logs {{follow}} --all-containers --prefix deploy/{{app}}
+
+browse:
+    open http://dash.localhost
 
 chart-lint:
     helm lint {{chart}}
