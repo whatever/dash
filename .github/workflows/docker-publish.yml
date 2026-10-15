@@ -92,11 +92,14 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      version: ${{ steps.push.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Package and push
+        id: push
         env:
           SHA_TAG: ${{ needs.publish.outputs.sha-tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -109,11 +112,12 @@ jobs:
           helm package charts/dash --version "$version" --app-version "$SHA_TAG"
           echo "$GH_TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
           helm push "dash-$version.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  # Ask geometry.dev to open a PR that bumps apps/dash to this image.
+  # Ask geometry.dev to open a PR that bumps apps/dash to this image and chart.
   # ArgoCD deploys it when that PR merges.
   notify-geometry:
-    needs: publish
+    needs: [publish, publish-chart]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.publish.outputs.sha-tag != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -129,10 +133,12 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           SHA_TAG: ${{ needs.publish.outputs.sha-tag }}
+          CHART_VERSION: ${{ needs.publish-chart.outputs.version }}
         run: |
           gh api "repos/${{ github.repository_owner }}/geometry.dev/dispatches" \
             -f event_type=image-published \
             -f "client_payload[app]=dash" \
             -f "client_payload[image]=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             -f "client_payload[tag]=$SHA_TAG" \
+            -f "client_payload[chart_version]=$CHART_VERSION" \
             -f "client_payload[source_sha]=${{ github.sha }}"
