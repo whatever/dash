@@ -96,6 +96,7 @@ async function openConversation(id) {
   setLoopy("idle");
   document.querySelector('nav button[data-tab="chat"]').click();
   const messages = await api(`/api/conversations/${id}/messages`);
+  if (state.conversation !== id) return;
   $("#messages").replaceChildren();
   messages.forEach((m) => {
     const node = bubble(m.role, m.content);
@@ -106,7 +107,36 @@ async function openConversation(id) {
       node.textContent = m.content;
     }
   });
+  const last = messages.at(-1);
+  if (last?.role === "assistant" && last.events?.length) setLoopy("done");
+  const pending = pendingJob(id);
+  if (pending && last?.role === "user") {
+    follow(pending, bubble("assistant", "…"), id);
+  } else if (pending) {
+    clearPendingJob(id);
+  }
   loadConversations();
+}
+
+function pendingJobs() {
+  try {
+    return JSON.parse(localStorage.getItem("jobs") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function pendingJob(conversation) {
+  return pendingJobs()[conversation];
+}
+
+function setPendingJob(conversation, jobId) {
+  localStorage.setItem("jobs", JSON.stringify({ ...pendingJobs(), [conversation]: jobId }));
+}
+
+function clearPendingJob(conversation) {
+  const { [conversation]: _, ...rest } = pendingJobs();
+  localStorage.setItem("jobs", JSON.stringify(rest));
 }
 
 $("#new-chat").addEventListener("click", async () => {
@@ -214,6 +244,7 @@ function follow(jobId, node, conversation) {
       render(ev);
       if (ev.kind === "done" || ev.kind === "error") {
         source.close();
+        clearPendingJob(conversation);
         resolve();
       }
       node.scrollIntoView({ block: "end" });
@@ -239,6 +270,7 @@ $("#composer").addEventListener("submit", async (e) => {
       method: "POST",
       body: { content },
     });
+    setPendingJob(conversation, job_id);
     loadConversations();
     await follow(job_id, node, conversation);
   } catch (err) {
