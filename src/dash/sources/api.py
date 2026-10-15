@@ -4,8 +4,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from dash.db import DataSource
-from dash.sources.common import KINDS, Source
+from dash.sources.common import Source
 from dash.sources.db import SourceStore
+from dash.sources.inputs import KINDS
 
 MIN_MINUTES = 5
 MAX_MINUTES = 60 * 24 * 7

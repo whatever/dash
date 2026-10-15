@@ -89,7 +89,7 @@ async def _scrape(
     from dash.db import Store
     from dash.sources.common import Source
     from dash.sources.db import SourceStore
-    from dash.sources.web import run
+    from dash.sources.scrape import run
 
     if not database_url:
         return sources, await run(sources, redis_url, dry_run=dry_run)

@@ -1,33 +1,21 @@
-"""`web:<url>` sources: one page, and a new item whenever its visible text changes."""
-
 import asyncio
-import hashlib
 import logging
-import re
 from collections.abc import Awaitable, Callable, Sequence
 
 import httpx
 
 from dash.queue import Queue
-from dash.sources.common import SUMMARY_CHARS, Item, Report, Source, client, plain
+from dash.sources.common import Item, Report, Source, client
+from dash.sources.inputs import INPUTS
 
 log = logging.getLogger(__name__)
 
 Fetch = Callable[[Source, httpx.AsyncClient], Awaitable[list[Item]]]
 
 
-def parse_page(source: str, url: str, body: str) -> list[Item]:
-    match = re.search(r"<title[^>]*>(.*?)</title>", body, flags=re.S | re.I)
-    title = plain(match.group(1), 300) if match else url
-    text = plain(body, 1_000_000)
-    digest = hashlib.sha256(text.encode()).hexdigest()[:16]
-    return [Item(source=source, key=digest, title=title, url=url, summary=text[:SUMMARY_CHARS])]
-
-
 async def fetch(source: Source, http: httpx.AsyncClient) -> list[Item]:
-    response = await http.get(source.target)
-    response.raise_for_status()
-    return parse_page(str(source), source.target, response.text)
+    """Return the current items of the given source from its input kind."""
+    return await INPUTS[source.kind].fetch(source.target, http)
 
 
 async def scrape(
@@ -38,6 +26,7 @@ async def scrape(
     fetcher: Fetch | None = None,
     http: httpx.AsyncClient | None = None,
 ) -> Report:
+    """Fetch the given sources and enqueue their new items. Return what happened."""
     report = Report()
     own = http is None
     http = http or client()
@@ -54,17 +43,19 @@ async def scrape(
             report.failed[str(source)] = str(result) or type(result).__name__
             continue
         report.found += len(result)
+        deduplicate = INPUTS[source.kind].deduplicate
         for item in result:
             if dry_run:
-                if not await queue.seen(item):
+                if not deduplicate or not await queue.seen(item):
                     report.enqueued.append(item)
-            elif await queue.mark_seen(item):
+            elif not deduplicate or await queue.mark_seen(item):
                 await queue.enqueue_update(item.to_dict())
                 report.enqueued.append(item)
     return report
 
 
 async def run(sources: Sequence[Source], redis_url: str, *, dry_run: bool) -> Report:
+    """Scrape the given sources with a queue at the given Redis URL."""
     queue = Queue.from_url(redis_url)
     try:
         return await scrape(sources, queue, dry_run=dry_run)

@@ -10,7 +10,8 @@ import dash
 from dash.db import Store
 from dash.queue import JOBS, UPDATE, Job, Queue
 from dash.sources.common import Item, Source, plain
-from dash.sources.web import fetch, parse_page, scrape
+from dash.sources.inputs.web import Web, parse_page
+from dash.sources.scrape import fetch, scrape
 from dash.worker import Worker
 from tests.fakes import FakeChat, FakeEmbedder, FakeExtractor, FakeStore
 
@@ -82,6 +83,22 @@ async def test_scrape_enqueues_only_new_items_and_survives_failures(queue: Queue
     assert job.data["title"] == "Status"
 
 
+async def test_scrape_without_deduplicate_enqueues_every_time(
+    queue: Queue, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(Web, "deduplicate", False)
+    source = Source.parse("web:https://ok/")
+
+    async def fetcher(source: Source, http: httpx.AsyncClient) -> list[Item]:
+        return page_items(source)
+
+    first = await scrape([source], queue, fetcher=fetcher)
+    second = await scrape([source], queue, fetcher=fetcher)
+
+    assert (len(first.enqueued), len(second.enqueued)) == (1, 1)
+    assert await queue.redis.xlen(JOBS) == 2
+
+
 async def test_legacy_entries_are_chat_jobs(queue: Queue) -> None:
     await queue.ensure_group()
     await queue.redis.xadd(JOBS, {"job_id": "j", "conversation_id": "c"})
@@ -121,7 +138,7 @@ def test_cli_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_fetch(source: Source, http: httpx.AsyncClient) -> list[Item]:
         return page_items(source)
 
-    monkeypatch.setattr("dash.sources.web.fetch", fake_fetch)
+    monkeypatch.setattr("dash.sources.scrape.fetch", fake_fetch)
     result = CliRunner().invoke(dash.main, ["scrape", "-s", "web:https://n/", "--dry-run"])
     assert result.exit_code == 0, result.output
     assert "new web:https://n/ Status" in result.output

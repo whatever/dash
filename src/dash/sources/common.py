@@ -8,7 +8,6 @@ import httpx
 USER_AGENT = "dash/0.1 (+https://github.com/whatever/dash)"
 TIMEOUT_SECONDS = 20
 SUMMARY_CHARS = 1000
-KINDS = ("web",)
 
 
 @dataclass(frozen=True)
@@ -18,6 +17,8 @@ class Source:
 
     @classmethod
     def parse(cls, spec: str) -> "Source":
+        from dash.sources.inputs import KINDS
+
         kind, sep, target = spec.strip().partition(":")
         if not sep or kind not in KINDS or not target:
             raise ValueError(f"Bad source {spec!r}: want one of {', '.join(KINDS)} then ':'.")
