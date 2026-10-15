@@ -47,8 +47,9 @@ async def test_reply_is_streamed_saved_and_memories_learned() -> None:
     assert "".join(e["text"] for e in got if e["kind"] == "delta") == "You like tea."
     assert got[-1]["kind"] == "done"
     assert [m.content for m in await store.messages(conv_id)][-1] == "You like tea."
-    assert chat.seen[0][0]["role"] == "system"
-    assert "what do I like?" in chat.seen[0][0]["content"]
+    assert chat.seen[0]["conversation"] == f"dash:{conv_id}"
+    assert chat.seen[0]["input"] == "what do I like?"
+    assert "what do I like?" in (chat.seen[0]["instructions"] or "")
     assert [m.content for m in store.mems][-1] == "The user likes tea."
 
 
@@ -139,3 +140,14 @@ async def test_run_survives_queue_outage(monkeypatch: pytest.MonkeyPatch) -> Non
     await worker.run(stop)
 
     assert calls == 2
+
+
+async def test_conversation_id_is_stable_and_only_new_message_is_sent() -> None:
+    chat = FakeChat(["ok"])
+    worker, store, _, conv_id, job = await setup(chat, [])
+    await worker.handle(job)
+    await store.add_message(conv_id, "user", "and now?")
+    await worker.handle(Job("2-0", "job2", str(conv_id)))
+
+    assert [s["conversation"] for s in chat.seen] == [f"dash:{conv_id}"] * 2
+    assert [s["input"] for s in chat.seen] == ["what do I like?", "and now?"]

@@ -1,6 +1,6 @@
 import itertools
 import uuid
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -111,10 +111,14 @@ class FakeChat:
     def __init__(self, chunks: list[str | Delta], fail: bool = False) -> None:
         self.chunks = chunks
         self.fail = fail
-        self.seen: list[list[dict[str, str]]] = []
+        self.seen: list[dict[str, str | None]] = []
 
-    async def stream(self, messages: Sequence[Mapping[str, str]]) -> AsyncIterator[Delta]:
-        self.seen.append([dict(m) for m in messages])
+    async def stream(
+        self, conversation: str, text: str, instructions: str | None = None
+    ) -> AsyncIterator[Delta]:
+        self.seen.append(
+            {"conversation": conversation, "input": text, "instructions": instructions}
+        )
         for chunk in self.chunks:
             yield Delta("text", chunk) if isinstance(chunk, str) else chunk
         if self.fail:
