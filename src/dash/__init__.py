@@ -112,6 +112,8 @@ def worker() -> None:
 
 async def _worker() -> None:
     from dash.db import Store
+    from dash.github.db import GitHubStore
+    from dash.github.review import GitHubReviewer
     from dash.hermes import Hermes
     from dash.memory import Bedrock
     from dash.queue import Queue
@@ -135,6 +137,7 @@ async def _worker() -> None:
                 embedder=bedrock,
                 extractor=bedrock,
                 top_k=settings.memory_top_k,
+                reviewer=GitHubReviewer(GitHubStore(store.sessions)),
             ).run(stop)
         finally:
             await hermes.close()

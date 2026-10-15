@@ -30,6 +30,7 @@ SOCKET_TIMEOUT_SECONDS = 30
 SEEN_TTL_SECONDS = 30 * 24 * 3600
 CHAT = "chat"
 UPDATE = "update"
+REVIEW = "review"
 
 
 def events_key(job_id: str) -> str:
@@ -81,6 +82,19 @@ class Queue:
     async def enqueue_update(self, item: dict[str, Any]) -> str:
         job_id = uuid.uuid4().hex
         await self.redis.xadd(JOBS, {"job_id": job_id, "kind": UPDATE, "data": json.dumps(item)})
+        return job_id
+
+    async def enqueue_review(self, conversation_id: str, target: dict[str, Any]) -> str:
+        job_id = uuid.uuid4().hex
+        await self.redis.xadd(
+            JOBS,
+            {
+                "job_id": job_id,
+                "kind": REVIEW,
+                "conversation_id": conversation_id,
+                "data": json.dumps(target),
+            },
+        )
         return job_id
 
     async def seen(self, item: Keyed) -> bool:

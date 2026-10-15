@@ -32,3 +32,23 @@ spec:
                 name: dash-api
                 port:
                   name: http
+{{- if .Values.dash.webhook.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash-webhook
+  labels: {{- include "dash.labels" (list . "dash") | nindent 4 }}
+spec:
+  rules:
+    - host: {{ .Values.dash.host }}
+      http:
+        paths:
+          - path: /api/webhook
+            pathType: Exact
+            backend:
+              service:
+                name: dash-api
+                port:
+                  name: http
+{{- end }}

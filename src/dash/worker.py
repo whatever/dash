@@ -22,7 +22,7 @@ from dash.memory import (
     Extractor,
     system_prompt,
 )
-from dash.queue import UPDATE, Job, Queue
+from dash.queue import REVIEW, UPDATE, Job, Queue
 from dash.sources.common import Item
 
 log = logging.getLogger(__name__)
@@ -46,6 +46,10 @@ class Chat(Protocol):
     ) -> AsyncIterator[Delta]: ...
 
 
+class Reviewer(Protocol):
+    async def post(self, repo: str, number: int, head_sha: str, body: str) -> str: ...
+
+
 class Worker:
     def __init__(
         self,
@@ -56,6 +60,7 @@ class Worker:
         embedder: Embedder,
         extractor: Extractor,
         top_k: int,
+        reviewer: Reviewer | None = None,
     ) -> None:
         self.store = store
         self.queue = queue
@@ -63,6 +68,7 @@ class Worker:
         self.embedder = embedder
         self.extractor = extractor
         self.top_k = top_k
+        self.reviewer = reviewer
         self.name = f"{socket.gethostname()}-{uuid.uuid4().hex[:6]}"
 
     async def recall(self, text: str) -> list[str]:
@@ -92,7 +98,31 @@ class Worker:
         if job.kind == UPDATE:
             await self.handle_update(job)
             return
+        if job.kind == REVIEW:
+            await self.handle_review(job)
+            return
         await self.handle_chat(job)
+
+    async def handle_review(self, job: Job) -> None:
+        text = await self.handle_chat(job, done=False)
+        if text is None:
+            return
+        if not text.strip():
+            await self.queue.emit(job.job_id, "error", message="Empty review.")
+            return
+        if self.reviewer is None:
+            await self.queue.emit(job.job_id, "done", posted=None)
+            return
+        try:
+            url = await self.reviewer.post(
+                job.data["repo"], int(job.data["number"]), job.data["head_sha"], text
+            )
+        except Exception as ex:
+            log.exception("posting review failed")
+            await self.queue.emit(job.job_id, "error", message=f"github: {ex}")
+            return
+        await self.queue.emit(job.job_id, "done", posted=url)
+        log.info("posted review %s", url)
 
     async def handle_update(self, job: Job) -> None:
         item = Item.from_dict(job.data)
@@ -109,12 +139,12 @@ class Worker:
         await self.queue.emit(job.job_id, "done", stored=True)
         log.info("stored update from %s: %s", item.source, item.title)
 
-    async def handle_chat(self, job: Job) -> None:
+    async def handle_chat(self, job: Job, *, done: bool = True) -> str | None:
         conversation_id = uuid.UUID(job.conversation_id)
         history = await self.store.messages(conversation_id)
         if not history or history[-1].role != "user":
             await self.queue.emit(job.job_id, "error", message="No user message to answer.")
-            return
+            return None
         user_text = history[-1].content
         # Everything the UI is shown, in order, so the reply can be rebuilt after a reload.
         trail: list[dict[str, Any]] = []
@@ -158,16 +188,19 @@ class Worker:
         except Exception as ex:
             log.exception("hermes call failed")
             await self.queue.emit(job.job_id, "error", message=f"hermes: {ex}")
-            return
+            return None
         await flush("reasoning")
         await flush("text")
 
         text = "".join(reply)
         message = await self.store.add_message(conversation_id, "assistant", text, trail)
+        if not done:
+            return text
         await self.queue.emit(job.job_id, "done", message_id=message.id)
         stored = await self.remember(user_text, text)
         if stored:
             log.info("stored %d new memories", stored)
+        return text
 
     async def run(self, stop: asyncio.Event | None = None) -> None:
         await self.queue.ensure_group()
