@@ -150,7 +150,11 @@ async def test_worker_stores_update_once(queue: Queue) -> None:
 
 def test_cli_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = fakeredis.FakeAsyncRedis(decode_responses=True)
-    monkeypatch.setattr(Queue, "from_url", classmethod(lambda cls, url: cls(redis)))
+
+    def from_url(url: str) -> Queue:
+        return Queue(redis)
+
+    monkeypatch.setattr(Queue, "from_url", from_url)
 
     async def fake_fetch(source: Source, http: httpx.AsyncClient) -> list[Item]:
         return parse_feed(str(source), RSS)

@@ -37,8 +37,10 @@ def events_key(job_id: str) -> str:
 
 
 class Keyed(Protocol):
-    source: str
-    key: str
+    @property
+    def source(self) -> str: ...
+    @property
+    def key(self) -> str: ...
 
 
 def seen_key(item: Keyed) -> str:
