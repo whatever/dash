@@ -35,7 +35,7 @@ def test_index_and_health(client: TestClient) -> None:
     assert client.get("/static/app.js").status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/memories", "/apps", "/data", f"/c/{uuid.uuid4()}"])
+@pytest.mark.parametrize("path", ["/memories", "/apps", "/data", "/live", f"/c/{uuid.uuid4()}"])
 def test_client_routes_serve_the_index(client: TestClient, path: str) -> None:
     assert 'src="/static/app.js"' in client.get(path).text
 
@@ -115,3 +115,15 @@ async def test_messages_include_saved_events(client: TestClient, store: FakeStor
     got = client.get(f"/api/conversations/{conv['id']}/messages").json()
 
     assert got == [{"id": got[0]["id"], "role": "assistant", "content": "ok", "events": events}]
+
+
+def test_live_lists_new_memories_newest_first(client: TestClient) -> None:
+    assert client.get("/api/live").json() == []
+    client.post("/api/memories", json={"content": "first"})
+    client.post("/api/memories", json={"content": "second"})
+    live = client.get("/api/live").json()
+    assert [(e["kind"], e["content"], e["source"]) for e in live] == [
+        ("memory", "second", "manual"),
+        ("memory", "first", "manual"),
+    ]
+    assert client.post("/api/live").status_code == 405

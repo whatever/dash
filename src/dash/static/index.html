@@ -19,6 +19,7 @@
         <a href="/memories" data-tab="memories">Memories</a>
         <a href="/apps" data-tab="apps">Apps</a>
         <a href="/data" data-tab="data">Data</a>
+        <a href="/live" data-tab="live">Live</a>
       </nav>
       <div class="section-head">
         <span>Chats</span>
@@ -68,6 +69,11 @@
     <section id="tab-data" class="tab">
       <p class="hint">Data sources keep dash up to date while you are away. Each source has its own schedule.</p>
       <div id="inputs"></div>
+    </section>
+
+    <section id="tab-live" class="tab">
+      <p class="hint">The latest jobs the worker picked up and memories it stored. Read-only; refreshes every few seconds.</p>
+      <ul id="live-list" class="rows"></ul>
     </section>
   </main>
 

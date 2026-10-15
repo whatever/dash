@@ -13,6 +13,7 @@ const loaders = {
     loadGitHub();
   },
   data: () => loadData(),
+  live: () => loadLive(),
 };
 
 function showTab(tab) {
@@ -457,6 +458,35 @@ async function loadData() {
   );
 }
 
+// Live timeline (read-only)
+function liveText(e) {
+  if (e.kind === "chat") return [`Chat: ${e.text}`, `/c/${e.conversation_id}`];
+  if (e.kind === "update") return [`${e.stored ? "Update" : "Update (duplicate, skipped)"}: ${e.title}`, e.url];
+  if (e.kind === "memory") return [`Memory: ${e.content}`, null];
+  return [`${e.kind}: ${JSON.stringify(e)}`, null];
+}
+
+async function loadLive() {
+  let entries;
+  try {
+    entries = await api("/api/live");
+  } catch (err) {
+    $("#live-list").replaceChildren(el("li", { className: "error", textContent: err.message }));
+    return;
+  }
+  $("#live-list").replaceChildren(
+    ...entries.map((e) => {
+      const [text, href] = liveText(e);
+      const body = href ? el("a", { href, textContent: text, target: href.startsWith("/") ? "" : "_blank" }) : text;
+      const meta = [new Date(e.at).toLocaleString(), e.source].filter(Boolean).join(" · ");
+      const li = el("li", {}, el("div", {}, body, el("div", { className: "meta", textContent: meta })));
+      li.dataset.kind = e.kind;
+      return li;
+    }),
+  );
+  if (!entries.length) $("#live-list").append(el("li", { textContent: "Nothing yet." }));
+}
+
 // Queue badge
 async function pollQueue() {
   try {
@@ -476,4 +506,7 @@ const last = localStorage.getItem("conversation");
 if (location.pathname === "/" && last && list.some((c) => c.id === last)) history.replaceState({}, "", `/c/${last}`);
 route();
 pollQueue();
-setInterval(pollQueue, 5000);
+setInterval(() => {
+  pollQueue();
+  if ($("#tab-live").classList.contains("active")) loadLive();
+}, 5000);

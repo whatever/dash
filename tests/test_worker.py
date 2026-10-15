@@ -151,3 +151,12 @@ async def test_conversation_id_is_stable_and_only_new_message_is_sent() -> None:
 
     assert [s["conversation"] for s in chat.seen] == [f"dash:{conv_id}"] * 2
     assert [s["input"] for s in chat.seen] == ["what do I like?", "and now?"]
+
+
+async def test_live_timeline_records_chat_and_memories() -> None:
+    worker, _, queue, conv_id, job = await setup(FakeChat(["ok"]), ["The user likes tea."])
+    await worker.handle(job)
+    live = await queue.live()
+    assert [e["kind"] for e in live] == ["memory", "chat"]
+    assert live[0]["content"] == "The user likes tea."
+    assert live[1]["conversation_id"] == str(conv_id)

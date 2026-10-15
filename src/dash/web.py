@@ -63,6 +63,7 @@ def create_app(
     @app.get("/memories")
     @app.get("/apps")
     @app.get("/data")
+    @app.get("/live")
     async def index() -> FileResponse:
         return FileResponse(STATIC / "index.html")
 
@@ -124,6 +125,10 @@ def create_app(
     async def queue_status() -> dict[str, int]:
         return await queue.status()
 
+    @app.get("/api/live")
+    async def live() -> list[dict[str, Any]]:
+        return await queue.live()
+
     @app.get("/api/memories")
     async def memories(q: str = "") -> list[dict[str, Any]]:
         if q.strip():
@@ -134,7 +139,9 @@ def create_app(
     @app.post("/api/memories", status_code=201)
     async def add_memory(body: NewMemory) -> dict[str, Any]:
         embedding = await embedder.embed(body.content)
-        return memory_json(await store.add_memory(body.content, embedding, "manual", body.tags))
+        memory = await store.add_memory(body.content, embedding, "manual", body.tags)
+        await queue.log("memory", content=memory.content, source="manual")
+        return memory_json(memory)
 
     @app.delete("/api/memories/{memory_id}", status_code=204)
     async def delete_memory(memory_id: int) -> None:

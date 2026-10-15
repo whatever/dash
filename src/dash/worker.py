@@ -83,6 +83,7 @@ class Worker:
                 if nearest and nearest[0][1] < DUPLICATE_DISTANCE:
                     continue
                 await self.store.add_memory(fact, embedding, source="conversation")
+                await self.queue.log("memory", content=fact, source="conversation")
                 stored += 1
         except Exception:
             log.exception("memory extraction failed")
@@ -99,13 +100,18 @@ class Worker:
         text = item.text()
         embedding = await self.embedder.embed(text)
         nearest = await self.store.search_memories(embedding, 1)
-        if nearest and nearest[0][1] < DUPLICATE_DISTANCE:
+        stored = not (nearest and nearest[0][1] < DUPLICATE_DISTANCE)
+        await self.queue.log(
+            "update", source=item.source, title=item.title, url=item.url, stored=stored
+        )
+        if not stored:
             await self.queue.emit(job.job_id, "done", stored=False)
             return
         source_kind = item.source.split(":", 1)[0]
         await self.store.add_memory(
             text, embedding, source="scrape", tags=[source_kind, item.source]
         )
+        await self.queue.log("memory", content=text, source="scrape")
         await self.queue.emit(job.job_id, "done", stored=True)
         log.info("stored update from %s: %s", item.source, item.title)
 
@@ -116,6 +122,7 @@ class Worker:
             await self.queue.emit(job.job_id, "error", message="No user message to answer.")
             return
         user_text = history[-1].content
+        await self.queue.log("chat", conversation_id=job.conversation_id, text=user_text[:200])
         # Everything the UI is shown, in order, so the reply can be rebuilt after a reload.
         trail: list[dict[str, Any]] = []
 
