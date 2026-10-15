@@ -130,13 +130,7 @@ spec:
               command: [sh, -c, "nc -z localhost 2222 && command -v git python3 gh"]
             initialDelaySeconds: 10
             periodSeconds: 10
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "256Mi"
-            limits:
-              cpu: "1"
-              memory: "1Gi"
+          resources: {{- toYaml .Values.hermes.sandbox.resources | nindent 12 }}
         # Holds NANGO_SECRET_KEY so the sshd container (and so the agent's
         # shell) never does. Only the per-connection credential files cross
         # over, through the shared tmpfs.
