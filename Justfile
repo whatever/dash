@@ -43,24 +43,30 @@ k8s-secrets:
     [ -f .env ] && . ./.env
     set +a
     jq -n \
-      --rawfile private .local/id_ed25519 \
-      --rawfile public .local/id_ed25519.pub \
-      'def v($k; d): (env[$k] // "") | if . == "" then d else . end;
-      {secrets: {values: {
-        "dash-bedrock": ({
-          AWS_REGION: v("AWS_REGION"; "us-east-1"),
-          AWS_DEFAULT_REGION: v("AWS_DEFAULT_REGION"; v("AWS_REGION"; "us-east-1")),
-          AWS_ACCESS_KEY_ID: v("AWS_ACCESS_KEY_ID"; null),
-          AWS_SECRET_ACCESS_KEY: v("AWS_SECRET_ACCESS_KEY"; null),
-          AWS_SESSION_TOKEN: v("AWS_SESSION_TOKEN"; null)
+        --rawfile private .local/id_ed25519 \
+        --rawfile public .local/id_ed25519.pub \
+        'def v($k; d): (env[$k] // "") | if . == "" then d else . end;
+        {secrets: {values: {
+            "dash-bedrock": ({
+            AWS_REGION: v("AWS_REGION"; "us-east-1"),
+            AWS_DEFAULT_REGION: v("AWS_DEFAULT_REGION"; v("AWS_REGION"; "us-east-1")),
+            AWS_ACCESS_KEY_ID: v("AWS_ACCESS_KEY_ID"; null),
+            AWS_SECRET_ACCESS_KEY: v("AWS_SECRET_ACCESS_KEY"; null),
+            AWS_SESSION_TOKEN: v("AWS_SESSION_TOKEN"; null)
         } | with_entries(select(.value != null))),
         "dash-agent-ssh": {PRIVATE_KEY: $private},
         "dash-sandbox-ssh": {PUBLIC_KEY: $public}
-      }}}' > .local/secrets.json
+    }}}' > .local/secrets.json
 
 k8s-up: k8s-build k8s-secrets
-    helm upgrade --install dash {{chart}} --kube-context {{kube_context}} --namespace {{namespace}} --create-namespace \
-      --values {{chart}}/values-local.yaml --values .local/secrets.json --wait --timeout 10m
+    helm upgrade \
+        --install dash {{chart}} \
+        --kube-context {{kube_context}} \
+        --namespace {{namespace}} \
+        --create-namespace \
+        --values {{chart}}/values-local.yaml \
+        --values .local/secrets.json \
+        --wait --timeout 10m
     @echo "open http://dash.localhost"
 
 reload: k8s-build

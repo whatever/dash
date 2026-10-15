@@ -1,3 +1,4 @@
+{{- if .Values.nango.deploy }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,18 +27,23 @@ spec:
               value: "3003"
             - name: NANGO_DATABASE_URL
               valueFrom:
-                secretKeyRef: { name: {{ .Values.configSecret }}, key: NANGO_DATABASE_URL }
+                secretKeyRef: { name: {{ include "dash.postgresSecret" . }}, key: NANGO_DATABASE_URL }
             - name: NANGO_DB_SSL
               value: {{ .Values.nango.dbSsl | quote }}
             - name: NANGO_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef: { name: dash, key: NANGO_ENCRYPTION_KEY }
             - name: NANGO_REDIS_URL
+              {{- if .Values.redis.deploy }}
               value: redis://dash-redis:6379/1
+              {{- else }}
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.redis.existingSecret }}, key: NANGO_REDIS_URL }
+              {{- end }}
             - name: NANGO_SERVER_URL
-              value: {{ include "dash.url" (list . "nango") }}
+              value: {{ include "dash.nangoPublicUrl" . }}
             - name: NANGO_PUBLIC_CONNECT_URL
-              value: {{ include "dash.url" (list . "nangoConnect") }}
+              value: {{ include "dash.nangoConnectUrl" . }}
             - name: FLAG_SERVE_CONNECT_UI
               value: "true"
             - name: FLAG_AUTH_ENABLED
@@ -79,3 +85,32 @@ spec:
     - name: connect
       port: 3009
       targetPort: connect
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash-nango
+  labels: {{- include "dash.labels" (list . "dash-nango") | nindent 4 }}
+spec:
+  rules:
+    - host: {{ .Values.nango.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dash-nango
+                port:
+                  name: api
+    - host: {{ .Values.nango.connectHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dash-nango
+                port:
+                  name: connect
+{{- end }}

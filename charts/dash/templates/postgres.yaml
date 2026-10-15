@@ -1,4 +1,14 @@
-{{- if .Values.postgres.enabled }}
+{{- if .Values.postgres.deploy }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dash-postgres
+  labels: {{- include "dash.labels" (list . "dash-postgres") | nindent 4 }}
+type: Opaque
+stringData:
+  DASH_DATABASE_URL: postgresql://dash:dash@dash-postgres:5432/dash
+  NANGO_DATABASE_URL: postgresql://dash:dash@dash-postgres:5432/nango
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:

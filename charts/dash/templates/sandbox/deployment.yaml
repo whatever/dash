@@ -1,3 +1,4 @@
+{{- if .Values.hermes.deploy }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -59,7 +60,7 @@ spec:
           image: alpine:3.20
           env:
             - name: GH_VERSION
-              value: {{ .Values.sandbox.ghVersion | quote }}
+              value: {{ .Values.hermes.sandbox.ghVersion | quote }}
           command:
             - sh
             - -c
@@ -68,9 +69,9 @@ spec:
               apk add --no-cache curl tar
 
               install_gh() {
-                curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_{{ .Values.sandbox.ghArch }}.tar.gz" \
+                curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_{{ .Values.hermes.sandbox.ghArch }}.tar.gz" \
                   | tar -xz -C /tmp
-                install -m 0755 "/tmp/gh_${GH_VERSION}_linux_{{ .Values.sandbox.ghArch }}/bin/gh" /tools/gh
+                install -m 0755 "/tmp/gh_${GH_VERSION}_linux_{{ .Values.hermes.sandbox.ghArch }}/bin/gh" /tools/gh
               }
 
               install_gh
@@ -79,7 +80,7 @@ spec:
               mountPath: /tools
       containers:
         - name: sshd
-          image: {{ .Values.sandbox.image }}
+          image: {{ .Values.hermes.sandbox.image }}
           env:
             - name: PUID
               value: "1000"
@@ -144,7 +145,7 @@ spec:
           command: ["python", "/scripts/nango_refresher.py"]
           env:
             - name: NANGO_URL
-              value: "http://dash-nango:3003"
+              value: {{ include "dash.nangoUrl" . | quote }}
             - name: NANGO_SECRET_KEY
               valueFrom:
                 secretKeyRef:
@@ -228,3 +229,4 @@ spec:
           configMap:
             name: github-refresher
             defaultMode: 0444
+{{- end }}

@@ -1,9 +1,5 @@
 # Production defaults. values-local.yaml overrides them for Rancher Desktop.
-
-image:
-  repository: ghcr.io/whatever/dash
-  tag: ""
-  pullPolicy: IfNotPresent
+# Each backing service has `deploy`. Set it to false to use a 3rd-party host.
 
 # Kustomize commonLabels from geometry.dev/apps/dash. They are in every
 # selector, and selectors are immutable, so keep them to adopt the prod objects.
@@ -12,28 +8,62 @@ commonLabels:
   app.kubernetes.io/managed-by: argocd
 
 scheme: https
-hosts:
-  dash: dash.geometry.dev
-  nango: nango.geometry.dev
-  nangoConnect: nango-connect.geometry.dev
-  agent: dash-agent.geometry.dev
-
-hermes:
-  model: hermes-opus
-
 storageClassName: local-path
-
-ingress:
-  basicAuth:
-    enabled: true
 
 networkPolicies:
   enabled: true
 
-# Secrets that the chart does not own. geometry-config is shared by the
-# cluster and holds DASH_DATABASE_URL, NANGO_DATABASE_URL and the
-# HERMES_DASHBOARD_* keys.
-configSecret: geometry-config
+# The dash api and worker.
+dash:
+  image: ghcr.io/whatever/dash:sha-fe41f19
+  imagePullPolicy: IfNotPresent
+  host: dash.geometry.dev
+  basicAuth:
+    enabled: true
+    secret: traefik-basic-auth
+
+postgres:
+  deploy: false
+  image: pgvector/pgvector:pg16
+  storage: 5Gi
+  # When deploy is false: a Secret with DASH_DATABASE_URL and NANGO_DATABASE_URL.
+  existingSecret: geometry-config
+
+redis:
+  deploy: true
+  image: redis:8-alpine
+  storage: 1Gi
+  # When deploy is false: a Secret with REDIS_URL and NANGO_REDIS_URL.
+  existingSecret: ""
+
+nango:
+  deploy: true
+  image: nangohq/nango-server:hosted-0.71.13@sha256:1839c59a2d04479e884328b2852f5aedc7b7c24083f07a2b0381958a1fd83649
+  dbSsl: "true"
+  host: nango.geometry.dev
+  connectHost: nango-connect.geometry.dev
+  # When deploy is false, for example https://api.nango.dev and https://connect.nango.dev.
+  url: ""
+  connectUrl: ""
+
+# The hermes agent and its ssh sandbox.
+hermes:
+  deploy: true
+  image: nousresearch/hermes-agent:v2026.8.27
+  model: hermes-opus
+  storage: 20Gi
+  dashboard:
+    enabled: true
+    host: dash-agent.geometry.dev
+    # HERMES_DASHBOARD_BASIC_AUTH_{USERNAME,PASSWORD_HASH,SECRET}.
+    existingSecret: geometry-config
+  # When deploy is false: an OpenAI-compatible base URL. The API key is in dash-hermes.
+  url: ""
+  sandbox:
+    image: lscr.io/linuxserver/openssh-server:10.2_p1-r0-ls226
+    storage: 10Gi
+    ghVersion: "2.65.0"
+    ghArch: amd64
 
 externalSecrets:
   enabled: true
@@ -71,26 +101,3 @@ externalSecrets:
 secrets:
   create: false
   values: {}
-
-# An in-cluster pgvector, for clusters with no RDS. When enabled, the chart
-# also writes the DB URLs into configSecret.
-postgres:
-  enabled: false
-  image: pgvector/pgvector:pg16
-  storage: 5Gi
-
-nango:
-  image: nangohq/nango-server:hosted-0.71.13@sha256:1839c59a2d04479e884328b2852f5aedc7b7c24083f07a2b0381958a1fd83649
-  dbSsl: "true"
-
-agent:
-  image: nousresearch/hermes-agent:v2026.8.27
-  storage: 20Gi
-  dashboard:
-    enabled: true
-
-sandbox:
-  image: lscr.io/linuxserver/openssh-server:10.2_p1-r0-ls226
-  storage: 10Gi
-  ghVersion: "2.65.0"
-  ghArch: amd64
