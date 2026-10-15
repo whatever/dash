@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
-import httpx
-
 from dash.sources.common import Item
 
 
@@ -13,5 +11,5 @@ class InputSource(ABC):
     deduplicate: ClassVar[bool] = True
 
     @abstractmethod
-    async def fetch(self, target: str, http: httpx.AsyncClient) -> list[Item]:
+    async def fetch(self, target: str) -> list[Item]:
         """Return the current items at the given target."""

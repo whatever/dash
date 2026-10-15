@@ -11,7 +11,7 @@ from dash.db import Store
 from dash.queue import JOBS, UPDATE, Job, Queue
 from dash.sources.common import Item, Source, plain
 from dash.sources.inputs.web import Web, parse_page
-from dash.sources.scrape import fetch, scrape
+from dash.sources.scrape import scrape
 from dash.worker import Worker
 from tests.fakes import FakeChat, FakeEmbedder, FakeExtractor, FakeStore
 
@@ -48,8 +48,8 @@ async def test_fetch_gets_the_page() -> None:
         assert str(request.url) == "https://s/status"
         return httpx.Response(200, text=PAGE)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        (item,) = await fetch(Source.parse("web:https://s/status"), http)
+    web = Web(lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    (item,) = await web.fetch("https://s/status")
     assert (item.source, item.url) == ("web:https://s/status", "https://s/status")
 
 
@@ -61,7 +61,7 @@ def queue() -> Queue:
 async def test_scrape_enqueues_only_new_items_and_survives_failures(queue: Queue) -> None:
     good, bad = Source.parse("web:https://ok/"), Source.parse("web:https://down/")
 
-    async def fetcher(source: Source, http: httpx.AsyncClient) -> list[Item]:
+    async def fetcher(source: Source) -> list[Item]:
         if source == bad:
             raise httpx.ConnectError("down")
         return page_items(source)
@@ -89,7 +89,7 @@ async def test_scrape_without_deduplicate_enqueues_every_time(
     monkeypatch.setattr(Web, "deduplicate", False)
     source = Source.parse("web:https://ok/")
 
-    async def fetcher(source: Source, http: httpx.AsyncClient) -> list[Item]:
+    async def fetcher(source: Source) -> list[Item]:
         return page_items(source)
 
     first = await scrape([source], queue, fetcher=fetcher)
@@ -135,7 +135,7 @@ def test_cli_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(Queue, "from_url", from_url)
 
-    async def fake_fetch(source: Source, http: httpx.AsyncClient) -> list[Item]:
+    async def fake_fetch(source: Source) -> list[Item]:
         return page_items(source)
 
     monkeypatch.setattr("dash.sources.scrape.fetch", fake_fetch)

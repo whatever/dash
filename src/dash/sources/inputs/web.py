@@ -2,11 +2,12 @@
 
 import hashlib
 import re
+from collections.abc import Callable
 
 import httpx
 
 from dash.sources.base import InputSource
-from dash.sources.common import SUMMARY_CHARS, Item, plain
+from dash.sources.common import SUMMARY_CHARS, Item, client, plain
 
 
 def parse_page(source: str, url: str, body: str) -> list[Item]:
@@ -23,8 +24,12 @@ class Web(InputSource):
 
     kind = "web"
 
-    async def fetch(self, target: str, http: httpx.AsyncClient) -> list[Item]:
+    def __init__(self, http: Callable[[], httpx.AsyncClient] = client) -> None:
+        self._http = http
+
+    async def fetch(self, target: str) -> list[Item]:
         """Return the page at the given URL as one item."""
-        response = await http.get(target)
+        async with self._http() as http:
+            response = await http.get(target)
         response.raise_for_status()
         return parse_page(f"{self.kind}:{target}", target, response.text)
