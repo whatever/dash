@@ -8,13 +8,13 @@ import asyncio
 import logging
 import socket
 import uuid
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping
 from typing import Any, Protocol
 
 from redis.exceptions import RedisError
 
 from dash.db import Store
-from dash.hermes import Delta
+from dash.hermes import Delta, conversation_key
 from dash.memory import (
     DUPLICATE_DISTANCE,
     RELEVANT_DISTANCE,
@@ -41,7 +41,9 @@ def record(log: list[dict[str, Any]], kind: str, data: Mapping[str, Any]) -> Non
 
 
 class Chat(Protocol):
-    def stream(self, messages: Sequence[Mapping[str, str]]) -> AsyncIterator[Delta]: ...
+    def stream(
+        self, conversation: str, text: str, instructions: str | None = None
+    ) -> AsyncIterator[Delta]: ...
 
 
 class Worker:
@@ -125,11 +127,10 @@ class Worker:
         if memories:
             await emit("memories", items=memories)
 
-        messages: list[dict[str, str]] = []
-        system = system_prompt(memories)
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages += [{"role": m.role, "content": m.content} for m in history]
+        # Hermes keeps the history under a conversation name derived from our id, so only
+        # the new message goes out; recalled memories ride along as this turn's instructions.
+        conversation = conversation_key(conversation_id)
+        instructions = system_prompt(memories)
 
         reply: list[str] = []
         buffers = {"text": "", "reasoning": ""}
@@ -141,7 +142,7 @@ class Worker:
                 buffers[kind] = ""
 
         try:
-            async for delta in self.chat.stream(messages):
+            async for delta in self.chat.stream(conversation, user_text, instructions):
                 if delta.kind in buffers:
                     other = "reasoning" if delta.kind == "text" else "text"
                     await flush(other)

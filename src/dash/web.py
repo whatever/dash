@@ -138,7 +138,7 @@ def create_app(
             raise HTTPException(404, "No such memory.")
 
     @asynccontextmanager
-    async def nango_errors() -> AsyncIterator[None]:
+    async def nango_errors() -> AsyncGenerator[None]:
         if not nango.enabled:
             raise HTTPException(503, "Nango is not configured.")
         try:

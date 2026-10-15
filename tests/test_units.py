@@ -1,10 +1,12 @@
 import io
+import uuid
 
+import pytest
 from alembic import command
 from alembic.script import ScriptDirectory
 
 from dash.db import alembic_config, async_url
-from dash.hermes import Delta, parse_sse_frame
+from dash.hermes import Delta, HermesError, conversation_key, parse_sse_frame
 from dash.memory import parse_facts, system_prompt
 
 URL = "postgresql://dash:p%40ss@db:5432/dash"
@@ -32,26 +34,39 @@ def test_offline_upgrade_creates_vector_tables() -> None:
 
 
 def test_parse_sse_frame() -> None:
-    assert parse_sse_frame(None, '{"choices":[{"delta":{"content":"hi"}}]}') == [
-        Delta("text", "hi")
-    ]
+    text = '{"type":"response.output_text.delta","delta":"hi"}'
+    assert parse_sse_frame("response.output_text.delta", text) == [Delta("text", "hi")]
+    assert parse_sse_frame(None, text) == [Delta("text", "hi")]
     assert parse_sse_frame(None, "[DONE]") == []
-    assert parse_sse_frame(None, '{"choices":[{"delta":{"role":"assistant"}}]}') == []
-    assert parse_sse_frame(None, '{"choices":[]}') == []
-    assert parse_sse_frame(None, '{"choices":[{"delta":{"reasoning_content":"hmm"}}]}') == [
-        Delta("reasoning", "hmm")
-    ]
-    tool = '{"tool":"terminal","label":"ls","toolCallId":"c1","status":"running"}'
-    assert parse_sse_frame("hermes.tool.progress", tool) == [
+    thinking = '{"type":"response.reasoning_summary_text.delta","delta":"hmm"}'
+    assert parse_sse_frame(None, thinking) == [Delta("reasoning", "hmm")]
+    call = (
+        '{"type":"response.output_item.added","item":{"type":"function_call",'
+        '"name":"terminal","call_id":"c1","arguments":"{\\"command\\": \\"ls -la\\"}"}}'
+    )
+    assert parse_sse_frame(None, call) == [
         Delta(
             "tool",
-            data={"tool": "terminal", "label": "ls", "toolCallId": "c1", "status": "running"},
+            data={"tool": "terminal", "label": "ls -la", "toolCallId": "c1", "status": "running"},
         )
     ]
+    done = call.replace("added", "done")
+    assert parse_sse_frame(None, done) == [
+        Delta("tool", data={"tool": "terminal", "toolCallId": "c1", "status": "completed"})
+    ]
+    output = '{"type":"response.output_item.added","item":{"type":"function_call_output"}}'
+    assert parse_sse_frame(None, output) == []
     assert parse_sse_frame("hermes.status", '{"message":"retrying"}') == [
         Delta("status", data={"message": "retrying"})
     ]
-    assert parse_sse_frame("approval.request", '{"x":1}') == []
+    assert parse_sse_frame("response.created", '{"type":"response.created"}') == []
+    with pytest.raises(HermesError, match="boom"):
+        parse_sse_frame(None, '{"type":"response.failed","response":{"error":{"message":"boom"}}}')
+
+
+def test_conversation_key_is_stable() -> None:
+    cid = uuid.uuid4()
+    assert conversation_key(cid) == conversation_key(str(cid)) == f"dash:{cid}"
 
 
 def test_parse_facts() -> None:
