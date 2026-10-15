@@ -71,6 +71,23 @@ hermes:
     ghVersion: "2.65.0"
     ghArch: amd64
 
+# Arize Phoenix for LLM traces. Set enabled to false to send no traces.
+phoenix:
+  enabled: true
+  deploy: true
+  image: arizephoenix/phoenix:version-20.22.0
+  storage: 5Gi
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { memory: 2Gi }
+  project: dash
+  # The Phoenix UI, behind dash.basicAuth. Empty means no ingress.
+  host: dash-phoenix.geometry.dev
+  # When deploy is false: a collector endpoint, for example https://app.phoenix.arize.com/s/<space>.
+  url: ""
+  # Optional Secret with PHOENIX_API_KEY, for example for Phoenix Cloud.
+  existingSecret: ""
+
 externalSecrets:
   enabled: true
   store: aws-secretsmanager

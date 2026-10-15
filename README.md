@@ -9,6 +9,7 @@ An always-on assistant in front of [hermes-agent](https://github.com/whatever/ge
 | Worker (`dash worker`) | Reads `dash:jobs`, recalls memories from pgvector, and streams the hermes reply. Then it extracts new memories. |
 | Memories | Postgres + pgvector. Bedrock Titan v2 makes the embeddings. Bedrock Haiku extracts the facts. |
 | App keys | A self-hosted [Nango](https://nango.dev). Nango holds the OAuth tokens. dash and hermes ask Nango for them. |
+| Traces | [Arize Phoenix](https://phoenix.arize.com). The API and worker send hermes and Bedrock spans to `PHOENIX_COLLECTOR_ENDPOINT`. No endpoint means no traces. The chart deploys Phoenix, or uses an external endpoint when `phoenix.deploy` is false. |
 | GitHub (`src/dash/github`) | Creates a private GitHub App from a manifest and stores its keys in the `authorizations` table. Use `app_client` and `installation_client` to call GitHub. |
 
 The browser follows a reply through `GET /api/jobs/<id>/events` (SSE). The worker writes each reply to its own Redis stream, so a page reload replays the reply from the start.

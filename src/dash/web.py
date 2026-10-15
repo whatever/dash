@@ -175,7 +175,9 @@ def create_production_app() -> FastAPI:
     """uvicorn factory: wires real Postgres, Redis, Bedrock and Nango from the environment."""
     from dash.github import GitHubApi, GitHubStore, create_router
     from dash.memory import Bedrock
+    from dash.tracing import setup
 
+    setup()
     settings = Settings.from_env()
     store = Store.from_url(settings.database_url)
     queue = Queue.from_url(settings.redis_url)

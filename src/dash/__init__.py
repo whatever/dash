@@ -46,8 +46,10 @@ async def _worker() -> None:
     from dash.hermes import Hermes
     from dash.memory import Bedrock
     from dash.queue import Queue
+    from dash.tracing import setup
     from dash.worker import Worker
 
+    setup()
     settings = Settings.from_env()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

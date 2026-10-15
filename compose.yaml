@@ -11,6 +11,7 @@
 #   http://localhost:3003   Nango dashboard (needs NANGO_ENCRYPTION_KEY in .env)
 #   http://localhost:8642   hermes-agent API
 #   http://localhost:4000   LiteLLM (needs AWS credentials that can call Bedrock)
+#   http://localhost:6006   Phoenix traces
 
 name: dashes
 
@@ -33,6 +34,7 @@ x-dash-env: &dash-env
   NANGO_PUBLIC_URL: http://localhost:3003
   NANGO_CONNECT_URL: http://localhost:3009
   NANGO_SECRET_KEY: ${NANGO_SECRET_KEY:-}
+  PHOENIX_COLLECTOR_ENDPOINT: ${PHOENIX_COLLECTOR_ENDPOINT:-http://phoenix:6006}
 
 x-dash: &dash
   build: .
@@ -94,6 +96,16 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+
+  phoenix:
+    image: arizephoenix/phoenix:version-20.22.0
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+    volumes:
+      - phoenix:/mnt/data
+    ports:
+      - 127.0.0.1:6006:6006
+    restart: unless-stopped
 
   webui:
     build:
@@ -217,3 +229,4 @@ volumes:
   hermes-ssh:
   hermes-workspace:
   sandbox:
+  phoenix:

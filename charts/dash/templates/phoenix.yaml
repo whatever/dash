@@ -1,0 +1,115 @@
+{{- if and .Values.phoenix.enabled .Values.phoenix.deploy }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dash-phoenix
+  labels: {{- include "dash.labels" (list . "dash-phoenix") | nindent 4 }}
+spec:
+  serviceName: dash-phoenix
+  replicas: 1
+  selector:
+    matchLabels: {{- include "dash.selectorLabels" (list . "dash-phoenix") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "dash.selectorLabels" (list . "dash-phoenix") | nindent 8 }}
+    spec:
+      containers:
+        - name: phoenix
+          image: {{ .Values.phoenix.image }}
+          env:
+            - name: PHOENIX_WORKING_DIR
+              value: /mnt/data
+          ports:
+            - name: http
+              containerPort: 6006
+            - name: otlp-grpc
+              containerPort: 4317
+          volumeMounts:
+            - name: data
+              mountPath: /mnt/data
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources: {{- toYaml .Values.phoenix.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+        labels: {{- toYaml .Values.commonLabels | nindent 10 }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: {{ .Values.storageClassName }}
+        resources:
+          requests:
+            storage: {{ .Values.phoenix.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash-phoenix
+  labels: {{- include "dash.labels" (list . "dash-phoenix") | nindent 4 }}
+spec:
+  selector: {{- include "dash.selectorLabels" (list . "dash-phoenix") | nindent 4 }}
+  ports:
+    - name: http
+      port: 6006
+      targetPort: http
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+{{- if .Values.phoenix.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash-phoenix
+  labels: {{- include "dash.labels" (list . "dash-phoenix") | nindent 4 }}
+  {{- if .Values.dash.basicAuth.enabled }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-basic-auth@kubernetescrd
+  {{- end }}
+spec:
+  rules:
+    - host: {{ .Values.phoenix.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dash-phoenix
+                port:
+                  name: http
+{{- end }}
+{{- if .Values.networkPolicies.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dash-phoenix
+  labels: {{- include "dash.labels" (list . "dash-phoenix") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "dash.selectorLabels" (list . "dash-phoenix") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app, operator: In, values: [dash-api, dash-worker] }
+      ports:
+        - port: http
+        - port: otlp-grpc
+    {{- if .Values.phoenix.host }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: http
+    {{- end }}
+{{- end }}
+{{- end }}

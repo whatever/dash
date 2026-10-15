@@ -6,8 +6,11 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import httpx
+from opentelemetry import trace
 
 Kind = Literal["text", "reasoning", "tool", "status"]
+
+tracer = trace.get_tracer(__name__)
 
 CUSTOM_EVENTS: dict[str, Kind] = {"hermes.tool.progress": "tool", "hermes.status": "status"}
 
@@ -57,14 +60,35 @@ class Hermes:
     async def stream(self, messages: Sequence[Mapping[str, str]]) -> AsyncIterator[Delta]:
         """Yield each text, reasoning, tool and status delta of one hermes turn."""
         body = {"model": self.model, "messages": list(messages), "stream": True}
-        async with self._client.stream("POST", "/chat/completions", json=body) as response:
-            response.raise_for_status()
-            event: str | None = None
-            async for line in response.aiter_lines():
-                if line.startswith("event:"):
-                    event = line.removeprefix("event:").strip()
-                elif line.startswith("data:"):
-                    for delta in parse_sse_frame(event, line.removeprefix("data:")):
-                        yield delta
-                elif not line:
-                    event = None
+        with tracer.start_as_current_span("hermes.chat") as span:
+            span.set_attributes(
+                {
+                    "openinference.span.kind": "LLM",
+                    "llm.model_name": self.model,
+                    **{
+                        f"llm.input_messages.{i}.message.{key}": message.get(key, "")
+                        for i, message in enumerate(messages)
+                        for key in ("role", "content")
+                    },
+                }
+            )
+            text: list[str] = []
+            async with self._client.stream("POST", "/chat/completions", json=body) as response:
+                response.raise_for_status()
+                event: str | None = None
+                async for line in response.aiter_lines():
+                    if line.startswith("event:"):
+                        event = line.removeprefix("event:").strip()
+                    elif line.startswith("data:"):
+                        for delta in parse_sse_frame(event, line.removeprefix("data:")):
+                            if delta.kind == "text":
+                                text.append(delta.text)
+                            yield delta
+                    elif not line:
+                        event = None
+            span.set_attributes(
+                {
+                    "llm.output_messages.0.message.role": "assistant",
+                    "llm.output_messages.0.message.content": "".join(text),
+                }
+            )

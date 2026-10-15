@@ -38,6 +38,11 @@ env:
   - name: NANGO_SECRET_KEY
     valueFrom:
       secretKeyRef: { name: dash, key: NANGO_SECRET_KEY, optional: true }
+  {{- if and .Values.phoenix.enabled .Values.phoenix.existingSecret }}
+  - name: PHOENIX_API_KEY
+    valueFrom:
+      secretKeyRef: { name: {{ .Values.phoenix.existingSecret }}, key: PHOENIX_API_KEY, optional: true }
+  {{- end }}
 securityContext:
   allowPrivilegeEscalation: false
 {{- end }}
@@ -60,4 +65,8 @@ securityContext:
 
 {{- define "dash.hermesUrl" -}}
 {{ ternary "http://dash-agent:8642/v1" .Values.hermes.url .Values.hermes.deploy }}
+{{- end }}
+
+{{- define "dash.phoenixUrl" -}}
+{{ ternary "http://dash-phoenix:6006" .Values.phoenix.url .Values.phoenix.deploy }}
 {{- end }}

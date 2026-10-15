@@ -13,3 +13,7 @@ data:
   NANGO_URL: {{ include "dash.nangoUrl" . }}
   NANGO_PUBLIC_URL: {{ include "dash.nangoPublicUrl" . }}
   NANGO_CONNECT_URL: {{ include "dash.nangoConnectUrl" . }}
+  {{- if .Values.phoenix.enabled }}
+  PHOENIX_COLLECTOR_ENDPOINT: {{ include "dash.phoenixUrl" . }}
+  PHOENIX_PROJECT_NAME: {{ .Values.phoenix.project }}
+  {{- end }}

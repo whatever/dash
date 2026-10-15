@@ -9,12 +9,15 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.20.0",
+    "arize-phoenix-otel>=0.17.2",
     "asyncpg>=0.31.0",
     "boto3>=1.40.0",
     "click>=8.5.0",
     "fastapi>=0.141.1",
     "githubkit[auth-app]>=0.16.1",
     "httpx>=0.28.1",
+    "openinference-instrumentation-bedrock>=0.1.60",
+    "opentelemetry-instrumentation-httpx>=0.66b1",
     "pgvector>=0.4.1",
     "redis>=6.4.0",
     "sqlalchemy[asyncio]>=2",
