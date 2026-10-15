@@ -117,13 +117,13 @@ async def test_messages_include_saved_events(client: TestClient, store: FakeStor
     assert got == [{"id": got[0]["id"], "role": "assistant", "content": "ok", "events": events}]
 
 
-def test_live_lists_new_memories_newest_first(client: TestClient) -> None:
+async def test_live_lists_timeline_newest_first(client: TestClient, store: FakeStore) -> None:
     assert client.get("/api/live").json() == []
-    client.post("/api/memories", json={"content": "first"})
-    client.post("/api/memories", json={"content": "second"})
+    await store.add_timeline("j1", "chat", {"conversation_id": "c1"})
+    await store.add_timeline("j2", "update", {"title": "News", "url": "https://n/"})
     live = client.get("/api/live").json()
-    assert [(e["kind"], e["content"], e["source"]) for e in live] == [
-        ("memory", "second", "manual"),
-        ("memory", "first", "manual"),
+    assert [(e["kind"], e["data"]) for e in live] == [
+        ("update", {"title": "News", "url": "https://n/"}),
+        ("chat", {"conversation_id": "c1"}),
     ]
     assert client.post("/api/live").status_code == 405

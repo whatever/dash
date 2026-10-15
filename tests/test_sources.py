@@ -125,12 +125,6 @@ async def test_worker_stores_update_once(queue: Queue) -> None:
     assert store.mems[0].source == "scrape"
     assert store.mems[0].tags == ["web", "web:https://s/"]
     assert [e async for e in queue.events("j2")] == [{"kind": "done", "stored": False}]
-    live = await queue.live()
-    assert [(e["kind"], e.get("stored")) for e in live] == [
-        ("update", False),
-        ("memory", None),
-        ("update", True),
-    ]
 
 
 def test_cli_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:

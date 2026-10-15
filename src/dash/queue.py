@@ -28,9 +28,6 @@ CLAIM_IDLE_MS = 5 * 60 * 1000
 SOCKET_TIMEOUT_SECONDS = 30
 # How long `dash scrape` remembers an item it already enqueued.
 SEEN_TTL_SECONDS = 30 * 24 * 3600
-# Recent activity for the LIVE panel: jobs received and memories stored.
-LIVE = "dash:live"
-LIVE_MAX = 500
 CHAT = "chat"
 UPDATE = "update"
 
@@ -151,23 +148,6 @@ class Queue:
                 yield event
                 if event["kind"] in ("done", "error"):
                     return
-
-    async def log(self, kind: str, **data: object) -> None:
-        """Append to the LIVE timeline, capped at about LIVE_MAX entries."""
-        await self.redis.xadd(
-            LIVE, {"kind": kind, "data": json.dumps(data)}, maxlen=LIVE_MAX, approximate=True
-        )
-
-    async def live(self, limit: int = 100) -> list[dict[str, Any]]:
-        """Newest-first LIVE entries; `at` is the entry's unix time in ms."""
-        rows = cast(
-            "list[tuple[str, dict[str, str]]]",
-            await self.redis.xrevrange(LIVE, count=limit),
-        )
-        return [
-            {"id": i, "at": int(i.split("-")[0]), "kind": f["kind"], **json.loads(f["data"])}
-            for i, f in rows
-        ]
 
     async def status(self) -> dict[str, int]:
         waiting = int(await self.redis.xlen(JOBS))

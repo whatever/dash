@@ -458,12 +458,11 @@ async function loadData() {
   );
 }
 
-// Live timeline (read-only)
+// Live timeline (read-only): every job the worker received, newest first.
 function liveText(e) {
-  if (e.kind === "chat") return [`Chat: ${e.text}`, `/c/${e.conversation_id}`];
-  if (e.kind === "update") return [`${e.stored ? "Update" : "Update (duplicate, skipped)"}: ${e.title}`, e.url];
-  if (e.kind === "memory") return [`Memory: ${e.content}`, null];
-  return [`${e.kind}: ${JSON.stringify(e)}`, null];
+  if (e.kind === "chat") return [`Chat message (${e.data.conversation_id.slice(0, 8)})`, `/c/${e.data.conversation_id}`, null];
+  if (e.kind === "update") return [`Update: ${e.data.title || e.data.url}`, e.data.url, e.data.source];
+  return [`${e.kind}: ${JSON.stringify(e.data)}`, null, null];
 }
 
 async function loadLive() {
@@ -476,9 +475,9 @@ async function loadLive() {
   }
   $("#live-list").replaceChildren(
     ...entries.map((e) => {
-      const [text, href] = liveText(e);
+      const [text, href, source] = liveText(e);
       const body = href ? el("a", { href, textContent: text, target: href.startsWith("/") ? "" : "_blank" }) : text;
-      const meta = [new Date(e.at).toLocaleString(), e.source].filter(Boolean).join(" · ");
+      const meta = [new Date(e.created_at).toLocaleString(), source].filter(Boolean).join(" · ");
       const li = el("li", {}, el("div", {}, body, el("div", { className: "meta", textContent: meta })));
       li.dataset.kind = e.kind;
       return li;

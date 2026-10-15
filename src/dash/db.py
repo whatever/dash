@@ -101,6 +101,20 @@ class Authorization(Base):
     )
 
 
+class TimelineEntry(Base):
+    """One inbound job, recorded by the worker as it picks the job up."""
+
+    __tablename__ = "timeline"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    job_id: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 class DataSource(Base):
     """A source that `dash scrape` checks for updates on a schedule."""
 
@@ -244,6 +258,17 @@ class Store:
         async with self._session() as session, session.begin():
             session.add(memory)
         return memory
+
+    async def add_timeline(self, job_id: str, kind: str, data: dict[str, Any]) -> None:
+        async with self._session() as session, session.begin():
+            session.add(TimelineEntry(job_id=job_id, kind=kind, data=data))
+
+    async def timeline(self, limit: int = 100) -> Sequence[TimelineEntry]:
+        async with self._session() as session:
+            rows = await session.scalars(
+                select(TimelineEntry).order_by(TimelineEntry.id.desc()).limit(limit)
+            )
+            return rows.all()
 
     async def delete_memory(self, memory_id: int) -> bool:
         async with self._session() as session, session.begin():

@@ -127,7 +127,15 @@ def create_app(
 
     @app.get("/api/live")
     async def live() -> list[dict[str, Any]]:
-        return await queue.live()
+        return [
+            {
+                "id": e.id,
+                "kind": e.kind,
+                "data": e.data,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in await store.timeline()
+        ]
 
     @app.get("/api/memories")
     async def memories(q: str = "") -> list[dict[str, Any]]:
@@ -139,9 +147,7 @@ def create_app(
     @app.post("/api/memories", status_code=201)
     async def add_memory(body: NewMemory) -> dict[str, Any]:
         embedding = await embedder.embed(body.content)
-        memory = await store.add_memory(body.content, embedding, "manual", body.tags)
-        await queue.log("memory", content=memory.content, source="manual")
-        return memory_json(memory)
+        return memory_json(await store.add_memory(body.content, embedding, "manual", body.tags))
 
     @app.delete("/api/memories/{memory_id}", status_code=204)
     async def delete_memory(memory_id: int) -> None:

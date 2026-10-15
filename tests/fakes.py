@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from dash.db import Authorization, Conversation, DataSource, Memory, Message
+from dash.db import Authorization, Conversation, DataSource, Memory, Message, TimelineEntry
 from dash.github.api import Installation, NewApp
 from dash.github.db import APP, INSTALLATION, PROVIDER
 from dash.hermes import Delta
@@ -20,6 +20,7 @@ class FakeStore:
         self.convs: dict[uuid.UUID, Conversation] = {}
         self.msgs: list[Message] = []
         self.mems: list[Memory] = []
+        self.timeline_rows: list[TimelineEntry] = []
         self._ids = itertools.count(1)
 
     async def conversations(self, limit: int = 50) -> list[Conversation]:
@@ -86,6 +87,20 @@ class FakeStore:
         )
         self.mems.append(m)
         return m
+
+    async def add_timeline(self, job_id: str, kind: str, data: dict[str, Any]) -> None:
+        self.timeline_rows.append(
+            TimelineEntry(
+                id=next(self._ids),
+                job_id=job_id,
+                kind=kind,
+                data=data,
+                created_at=datetime.now(UTC),
+            )
+        )
+
+    async def timeline(self, limit: int = 100) -> list[TimelineEntry]:
+        return self.timeline_rows[::-1][:limit]
 
     async def delete_memory(self, memory_id: int) -> bool:
         before = len(self.mems)
