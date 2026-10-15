@@ -25,7 +25,7 @@ spec:
             - name: scrape
               image: {{ include "dash.image" . }}
               imagePullPolicy: {{ .Values.dash.imagePullPolicy }}
-              command: [dash, scrape]
+              args: [scrape]
               envFrom:
                 - configMapRef:
                     name: dash-env

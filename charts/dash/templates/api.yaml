@@ -17,13 +17,13 @@ spec:
         - name: migrate
           image: {{ include "dash.image" . }}
           imagePullPolicy: {{ .Values.dash.imagePullPolicy }}
-          command: [dash, migrate]
+          args: [migrate]
           {{- include "dash.env" . | nindent 10 }}
       containers:
         - name: api
           image: {{ include "dash.image" . }}
           imagePullPolicy: {{ .Values.dash.imagePullPolicy }}
-          command: [dash, serve, --host, 0.0.0.0, --port, "8000"]
+          args: [serve, --host, 0.0.0.0, --port, "8000"]
           ports:
             - name: http
               containerPort: 8000
