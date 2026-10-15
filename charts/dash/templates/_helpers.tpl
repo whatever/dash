@@ -10,7 +10,7 @@ helm.sh/chart: {{ printf "%s-%s" (index . 0).Chart.Name (index . 0).Chart.Versio
 {{- end }}
 
 {{- define "dash.image" -}}
-{{ .Values.dash.image.repository }}:{{ .Values.dash.image.tag | default .Chart.AppVersion }}
+{{ .Values.dash.image }}
 {{- end }}
 
 {{- define "dash.url" -}}

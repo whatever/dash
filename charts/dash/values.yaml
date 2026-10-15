@@ -15,10 +15,8 @@ networkPolicies:
 
 # The dash api and worker.
 dash:
-  image:
-    repository: ghcr.io/whatever/dash
-    tag: ""
-    pullPolicy: IfNotPresent
+  image: ghcr.io/whatever/dash:sha-fe41f19
+  imagePullPolicy: IfNotPresent
   host: dash.geometry.dev
   basicAuth:
     enabled: true
