@@ -48,8 +48,8 @@ async def test_fetch_gets_the_page() -> None:
         assert str(request.url) == "https://s/status"
         return httpx.Response(200, text=PAGE)
 
-    web = Web(lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
-    (item,) = await web.fetch("https://s/status")
+    web = Web("https://s/status", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    (item,) = await web.fetch()
     assert (item.source, item.url) == ("web:https://s/status", "https://s/status")
 
 

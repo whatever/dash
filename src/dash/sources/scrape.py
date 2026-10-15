@@ -13,7 +13,7 @@ Fetch = Callable[[Source], Awaitable[list[Item]]]
 
 async def fetch(source: Source) -> list[Item]:
     """Return the current items of the given source from its input kind."""
-    return await INPUTS[source.kind].fetch(source.target)
+    return await INPUTS[source.kind](source.target).fetch()
 
 
 async def scrape(

@@ -24,12 +24,13 @@ class Web(InputSource):
 
     kind = "web"
 
-    def __init__(self, http: Callable[[], httpx.AsyncClient] = client) -> None:
+    def __init__(self, target: str, http: Callable[[], httpx.AsyncClient] = client) -> None:
+        super().__init__(target)
         self._http = http
 
-    async def fetch(self, target: str) -> list[Item]:
-        """Return the page at the given URL as one item."""
+    async def fetch(self) -> list[Item]:
+        """Return the page as one item."""
         async with self._http() as http:
-            response = await http.get(target)
+            response = await http.get(self.target)
         response.raise_for_status()
-        return parse_page(f"{self.kind}:{target}", target, response.text)
+        return parse_page(str(self), self.target, response.text)
