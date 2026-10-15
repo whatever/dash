@@ -97,21 +97,21 @@ spec:
             - name: HERMES_DASHBOARD_BASIC_AUTH_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.configSecret }}
+                  name: {{ $.Values.global.configSecret }}
                   key: HERMES_DASHBOARD_BASIC_AUTH_USERNAME
             - name: HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.configSecret }}
+                  name: {{ $.Values.global.configSecret }}
                   key: HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH
             - name: HERMES_DASHBOARD_BASIC_AUTH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.configSecret }}
+                  name: {{ $.Values.global.configSecret }}
                   key: HERMES_DASHBOARD_BASIC_AUTH_SECRET
             {{- end }}
             - name: API_SERVER_MODEL_NAME
-              value: {{ .Values.hermes.model | quote }}
+              value: {{ .Values.agent.model | quote }}
             - name: PYTHONPATH
               value: "/packages"
             - name: TMPDIR

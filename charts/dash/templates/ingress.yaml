@@ -1,4 +1,4 @@
-{{- if .Values.ingress.basicAuth.enabled }}
+{{- if .Values.dash.basicAuth.enabled }}
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -16,13 +16,13 @@ kind: Ingress
 metadata:
   name: dash
   labels: {{- include "dash.labels" (list . "dash") | nindent 4 }}
-  {{- if .Values.ingress.basicAuth.enabled }}
+  {{- if .Values.dash.basicAuth.enabled }}
   annotations:
     traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-basic-auth@kubernetescrd
   {{- end }}
 spec:
   rules:
-    - host: {{ .Values.hosts.dash }}
+    - host: {{ .Values.dash.host }}
       http:
         paths:
           - path: /
@@ -40,7 +40,7 @@ metadata:
   labels: {{- include "dash.labels" (list . "dash-nango") | nindent 4 }}
 spec:
   rules:
-    - host: {{ .Values.hosts.nango }}
+    - host: {{ .Values.nango.host }}
       http:
         paths:
           - path: /
@@ -50,7 +50,7 @@ spec:
                 name: dash-nango
                 port:
                   name: api
-    - host: {{ .Values.hosts.nangoConnect }}
+    - host: {{ .Values.nango.connectHost }}
       http:
         paths:
           - path: /

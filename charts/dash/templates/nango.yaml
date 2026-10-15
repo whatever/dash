@@ -26,7 +26,7 @@ spec:
               value: "3003"
             - name: NANGO_DATABASE_URL
               valueFrom:
-                secretKeyRef: { name: {{ .Values.configSecret }}, key: NANGO_DATABASE_URL }
+                secretKeyRef: { name: {{ .Values.global.configSecret }}, key: NANGO_DATABASE_URL }
             - name: NANGO_DB_SSL
               value: {{ .Values.nango.dbSsl | quote }}
             - name: NANGO_ENCRYPTION_KEY
@@ -35,9 +35,9 @@ spec:
             - name: NANGO_REDIS_URL
               value: redis://dash-redis:6379/1
             - name: NANGO_SERVER_URL
-              value: {{ include "dash.url" (list . "nango") }}
+              value: {{ include "dash.url" (list . .Values.nango.host) }}
             - name: NANGO_PUBLIC_CONNECT_URL
-              value: {{ include "dash.url" (list . "nangoConnect") }}
+              value: {{ include "dash.url" (list . .Values.nango.connectHost) }}
             - name: FLAG_SERVE_CONNECT_UI
               value: "true"
             - name: FLAG_AUTH_ENABLED

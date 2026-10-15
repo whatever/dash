@@ -35,10 +35,10 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
-        labels: {{- toYaml .Values.commonLabels | nindent 10 }}
+        labels: {{- toYaml .Values.global.commonLabels | nindent 10 }}
       spec:
         accessModes: [ReadWriteOnce]
-        storageClassName: {{ .Values.storageClassName }}
+        storageClassName: {{ .Values.global.storageClassName }}
         resources:
           requests:
             storage: 1Gi

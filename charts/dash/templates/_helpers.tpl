@@ -1,7 +1,7 @@
 {{- define "dash.selectorLabels" -}}
 {{- $root := index . 0 -}}
 app: {{ index . 1 }}
-{{ toYaml $root.Values.commonLabels }}
+{{ toYaml $root.Values.global.commonLabels }}
 {{- end }}
 
 {{- define "dash.labels" -}}
@@ -10,11 +10,11 @@ helm.sh/chart: {{ printf "%s-%s" (index . 0).Chart.Name (index . 0).Chart.Versio
 {{- end }}
 
 {{- define "dash.image" -}}
-{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+{{ .Values.dash.image.repository }}:{{ .Values.dash.image.tag | default .Chart.AppVersion }}
 {{- end }}
 
 {{- define "dash.url" -}}
-{{ (index . 0).Values.scheme }}://{{ index (index . 0).Values.hosts (index . 1) }}
+{{ (index . 0).Values.global.scheme }}://{{ index . 1 }}
 {{- end }}
 
 {{- define "dash.env" -}}
@@ -26,7 +26,7 @@ envFrom:
 env:
   - name: DATABASE_URL
     valueFrom:
-      secretKeyRef: { name: {{ .Values.configSecret }}, key: DASH_DATABASE_URL }
+      secretKeyRef: { name: {{ .Values.global.configSecret }}, key: DASH_DATABASE_URL }
   - name: HERMES_API_KEY
     valueFrom:
       secretKeyRef: { name: dash-hermes, key: API_SERVER_KEY }

@@ -6,7 +6,7 @@ metadata:
   labels: {{- include "dash.labels" (list . "dash-agent") | nindent 4 }}
 spec:
   rules:
-    - host: {{ .Values.hosts.agent }}
+    - host: {{ .Values.agent.host }}
       http:
         paths:
           - path: /
