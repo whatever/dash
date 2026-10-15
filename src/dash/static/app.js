@@ -1,4 +1,6 @@
 import { $, api, el } from "./lib.js";
+import { marked } from "./vendor/marked.esm.js";
+import DOMPurify from "./vendor/purify.es.js";
 import inputs from "./inputs/index.js";
 
 const state = { conversation: null, config: {} };
@@ -97,8 +99,20 @@ async function loadConversations() {
   return list;
 }
 
+// Assistant replies are markdown; sanitize since the model's output is untrusted.
+marked.use({ gfm: true, breaks: true });
+function setText(node, text) {
+  if (!node.classList.contains("assistant")) {
+    node.textContent = text;
+    return;
+  }
+  node.innerHTML = DOMPurify.sanitize(marked.parse(text));
+  node.querySelectorAll("a[href]").forEach((a) => Object.assign(a, { target: "_blank", rel: "noopener noreferrer" }));
+}
+
 function bubble(role, text) {
-  const node = el("div", { className: `msg ${role}`, textContent: text });
+  const node = el("div", { className: `msg ${role}` });
+  setText(node, text);
   $("#messages").append(node);
   node.scrollIntoView({ block: "end" });
   return node;
@@ -126,7 +140,7 @@ async function openConversation(id) {
       const render = renderer(node);
       m.events.forEach(render);
       render({ kind: "done" });
-      node.textContent = m.content;
+      setText(node, m.content);
     }
   });
   const last = messages.at(-1);
@@ -224,7 +238,7 @@ function renderer(node) {
     if (ev.kind === "delta") {
       settle();
       text += ev.text;
-      node.textContent = text;
+      setText(node, text);
     } else if (ev.kind === "reasoning") {
       thought().body.textContent += ev.text;
     } else if (ev.kind === "tool") {
@@ -248,7 +262,7 @@ function renderer(node) {
       tools.forEach((row) => row.dataset.status === "running" && (row.dataset.status = "completed"));
       if (ev.kind === "error") {
         node.classList.add("error");
-        node.textContent = text + `\n\n${ev.message}`;
+        setText(node, text + `\n\n${ev.message}`);
       }
     }
   };

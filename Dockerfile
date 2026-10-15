@@ -5,7 +5,7 @@
 #        docker run --rm dash scrape
 
 # Stage 1: compile the loopy widget (webui/loopy) to JavaScript.
-# The same stage is in webui/Dockerfile. Only the platform-neutral dist/ leaves it.
+# Only the platform-neutral dist/ leaves it.
 FROM --platform=$BUILDPLATFORM node:24-alpine AS loopy
 WORKDIR /loopy
 COPY webui/loopy/package.json webui/loopy/package-lock.json ./
@@ -13,6 +13,13 @@ RUN npm ci
 COPY webui/loopy/tsconfig.json ./
 COPY webui/loopy/src ./src
 RUN npm run build
+
+
+# Third-party browser modules (webui/vendor): npm ci, then copy the prebuilt ESM files to dist/.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS vendor
+WORKDIR /vendor
+COPY webui/vendor/package.json webui/vendor/package-lock.json webui/vendor/build.js ./
+RUN npm ci && npm run build
 
 
 # Stage 2: build the virtual environment with uv.
@@ -39,6 +46,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 # `dash serve` serves src/dash/static at /static, so the widget is at /static/loopy/loopy.js.
 COPY --from=loopy /loopy/dist/ ./src/dash/static/loopy/
+COPY --from=vendor /vendor/dist/ ./src/dash/static/vendor/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 
