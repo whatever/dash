@@ -38,7 +38,19 @@ main { flex: 1; display: flex; min-width: 0; }
 #messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 .msg { max-width: 760px; padding: 10px 14px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.user { align-self: flex-end; background: var(--user); }
-.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); white-space: normal; }
+.msg.assistant > :first-child { margin-top: 0; }
+.msg.assistant > :last-child { margin-bottom: 0; }
+.msg.assistant :is(p, ul, ol, pre, blockquote, table) { margin: 0.5em 0; }
+.msg.assistant :is(ul, ol) { padding-left: 1.5em; }
+.msg.assistant :is(h1, h2, h3, h4) { margin: 0.8em 0 0.4em; font-size: 1.05em; }
+.msg.assistant code { font-family: ui-monospace, monospace; font-size: 0.9em; background: color-mix(in srgb, currentColor 8%, transparent); padding: 0.1em 0.3em; border-radius: 4px; }
+.msg.assistant pre { padding: 10px; border-radius: 6px; overflow-x: auto; background: color-mix(in srgb, currentColor 6%, transparent); }
+.msg.assistant pre code { background: none; padding: 0; white-space: pre; }
+.msg.assistant blockquote { border-left: 3px solid var(--line); padding-left: 10px; opacity: 0.85; }
+.msg.assistant table { border-collapse: collapse; display: block; overflow-x: auto; }
+.msg.assistant :is(th, td) { border: 1px solid var(--line); padding: 4px 8px; }
+.msg.assistant img { max-width: 100%; }
 .msg.error { border-color: #dc2626; color: #dc2626; }
 li.error { color: #dc2626; }
 .trace { align-self: flex-start; max-width: 760px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
