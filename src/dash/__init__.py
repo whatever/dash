@@ -2,16 +2,11 @@ import asyncio
 import logging
 import os
 import signal
-from typing import TYPE_CHECKING
 
 import click
 import uvicorn
 
 from dash.config import Settings
-
-if TYPE_CHECKING:
-    from dash.sources import Source
-    from dash.sources.scrape import Report
 
 
 @click.group()
@@ -48,15 +43,13 @@ def serve(*, host: str, port: int) -> None:
     "specs",
     multiple=True,
     envvar="SCRAPE_SOURCES",
-    help=(
-        "rss:<url>, reddit:<subreddit> or web:<url>. "
-        "Repeatable, or space-separated in SCRAPE_SOURCES."
-    ),
+    help="web:<url>. Repeatable, or space-separated in SCRAPE_SOURCES.",
 )
 @click.option("--dry-run", is_flag=True, help="Fetch and print new items without enqueuing.")
 def scrape(*, specs: tuple[str, ...], dry_run: bool) -> None:
     """Fetch real-world updates and enqueue new ones for the worker. Run it from a cron."""
-    from dash.sources import Source
+    from dash.sources.common import Source
+    from dash.sources.web import run
 
     try:
         sources = [Source.parse(spec) for spec in specs]
@@ -64,7 +57,9 @@ def scrape(*, specs: tuple[str, ...], dry_run: bool) -> None:
         raise click.BadParameter(str(ex), param_hint="--source") from ex
     if not sources:
         raise click.UsageError("No sources: pass --source or set SCRAPE_SOURCES.")
-    report = asyncio.run(_scrape(sources, dry_run=dry_run))
+    # Scraping only needs Redis, so don't demand DATABASE_URL like Settings.from_env().
+    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    report = asyncio.run(run(sources, redis_url, dry_run=dry_run))
     for item in report.enqueued:
         click.echo(f"{'new' if dry_run else 'enqueued'} {item.source} {item.title} <{item.url}>")
     for source, error in report.failed.items():
@@ -77,22 +72,6 @@ def scrape(*, specs: tuple[str, ...], dry_run: bool) -> None:
     # Only fail the cron run when nothing worked, so one flaky site doesn't page anyone.
     if report.failed and len(report.failed) == len(sources):
         raise SystemExit(1)
-
-
-async def _scrape(sources: "list[Source]", *, dry_run: bool) -> "Report":
-    from dash.queue import Queue
-    from dash.sources.scrape import scrape
-
-    queue = Queue.from_url(_redis_url())
-    try:
-        return await scrape(sources, queue, dry_run=dry_run)
-    finally:
-        await queue.close()
-
-
-def _redis_url() -> str:
-    # Scraping only needs Redis, so don't demand DATABASE_URL like Settings.from_env().
-    return os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
 @main.command()

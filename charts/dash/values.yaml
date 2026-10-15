@@ -108,7 +108,7 @@ secrets:
   create: false
   values: {}
 
-# `dash scrape` on a schedule. Sources are rss:<url>, reddit:<subreddit> or web:<url>.
+# `dash scrape` on a schedule. Sources are web:<url>.
 scrape:
   enabled: true
   schedule: "*/30 * * * *"

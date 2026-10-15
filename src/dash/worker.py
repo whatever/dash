@@ -23,7 +23,7 @@ from dash.memory import (
     system_prompt,
 )
 from dash.queue import UPDATE, Job, Queue
-from dash.sources import Item
+from dash.sources.common import Item
 
 log = logging.getLogger(__name__)
 
