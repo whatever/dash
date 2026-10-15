@@ -59,6 +59,10 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/")
+    @app.get("/c/{conversation_id}")
+    @app.get("/memories")
+    @app.get("/apps")
+    @app.get("/data")
     async def index() -> FileResponse:
         return FileResponse(STATIC / "index.html")
 
@@ -175,6 +179,8 @@ def create_production_app() -> FastAPI:
     """uvicorn factory: wires real Postgres, Redis, Bedrock and Nango from the environment."""
     from dash.github import GitHubApi, GitHubStore, create_router
     from dash.memory import Bedrock
+    from dash.sources.api import create_router as create_sources_router
+    from dash.sources.db import SourceStore
 
     settings = Settings.from_env()
     store = Store.from_url(settings.database_url)
@@ -202,7 +208,8 @@ def create_production_app() -> FastAPI:
                 store=GitHubStore(store.sessions),
                 api=GitHubApi(),
                 public_url=settings.public_url,
-            )
+            ),
+            create_sources_router(store=SourceStore(store.sessions)),
         ],
         lifespan=lifespan,
     )

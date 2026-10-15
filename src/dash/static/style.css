@@ -11,14 +11,19 @@
 * { box-sizing: border-box; }
 body { margin: 0; display: flex; height: 100vh; background: var(--bg); color: var(--text); }
 aside { width: 260px; border-right: 1px solid var(--line); display: flex; flex-direction: column; background: var(--panel); }
-aside header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; }
+aside header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
 h1 { font-size: 18px; margin: 0; }
-#queue { font-size: 12px; color: var(--muted); }
-nav { display: flex; gap: 4px; padding: 0 10px 10px; }
+#queue { margin-top: auto; padding: 10px 14px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
+#queue::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #16a34a; }
+#queue.busy::before { background: var(--accent); }
+nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 12px; }
+nav a { padding: 6px 10px; border-radius: 6px; color: var(--text); text-decoration: none; }
+nav a:hover { background: var(--bg); }
+nav a.active { background: var(--bg); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+.section-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 4px 18px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+#new-chat { padding: 0 8px; line-height: 1.6; }
 button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
-nav button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-#new-chat { margin: 0 10px 8px; }
 ul { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
 #conversations li { padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
 #conversations li span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -45,16 +50,22 @@ li.error { color: #dc2626; }
 .tool[data-status="failed"] { color: #dc2626; }
 .status { font-style: italic; }
 .recalled { font-size: 12px; color: var(--muted); margin-top: 6px; }
-#composer, #memory-add { display: flex; gap: 8px; }
-textarea, input { flex: 1; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
+#composer, form.inline { display: flex; gap: 8px; }
+textarea, input, select { flex: 1; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
 #memory-search input { width: 100%; }
-#memory-list li, #app-list li, #github-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.rows li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .meta { font-size: 12px; color: var(--muted); }
 .hint { color: var(--muted); margin: 0; }
 h2 { font-size: 16px; margin: 12px 0 0; }
-#github-create { display: flex; gap: 8px; }
-#github-create input { flex: 1; }
-#memory-list li > div:first-child, #app-list li > div:first-child, #github-list li > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.rows li > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.actions { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start; }
+select { flex: 0 0 auto; }
+p.error { color: #dc2626; margin: 0; }
+p.error:empty { display: none; }
+.tab { overflow-y: auto; }
+#tab-chat { overflow-y: visible; }
+#inputs { display: flex; flex-direction: column; gap: 24px; }
+.input { display: flex; flex-direction: column; gap: 10px; }
 #toggle-conversations { display: none; }
 #sidebar-body { display: contents; }
 #toggle-sidebar { padding: 2px 8px; }
@@ -66,7 +77,7 @@ h2 { font-size: 16px; margin: 12px 0 0; }
 #loopy { flex-shrink: 0; align-self: flex-start; color: var(--muted); }
 #pulse { align-self: center; flex-shrink: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
 @media (pointer: coarse) {
-  textarea, input { font-size: 16px; }
+  textarea, input, select { font-size: 16px; }
 }
 @media (max-width: 700px) {
   body { flex-direction: column; height: 100dvh; }
@@ -75,21 +86,22 @@ h2 { font-size: 16px; margin: 12px 0 0; }
   aside header h1 { flex: 1; }
   #toggle-conversations { display: inline-block; }
   #toggle-sidebar { display: none; }
-  nav { padding: 0 12px 8px; }
-  nav button { flex: 1; }
+  nav { flex-direction: row; padding: 0 12px 8px; }
+  nav a { flex: 1; text-align: center; box-shadow: none; }
+  nav a.active { background: var(--accent); color: #fff; }
+  #queue { display: none; }
   button { min-height: 40px; }
-  #new-chat, #conversations { display: none; }
-  aside.open #new-chat { display: block; }
+  .section-head, #conversations { display: none; }
+  aside.open .section-head { display: flex; }
   aside.open #conversations { display: block; max-height: 40dvh; }
-  #new-chat { margin: 0 12px 8px; }
   #conversations li { padding: 12px; }
   main { flex: 1; min-height: 0; }
   .tab { padding: 12px; overflow-y: auto; }
   #tab-chat { overflow-y: visible; }
-  textarea, input { min-width: 0; }
+  textarea, input, select { min-width: 0; }
   .msg { max-width: 92%; }
   #composer { align-items: flex-end; }
   #pulse { align-self: flex-end; margin-bottom: 14px; }
-  #memory-add, #github-create { flex-wrap: wrap; }
-  #memory-add input, #github-create input { flex-basis: 100%; }
+  form.inline { flex-wrap: wrap; }
+  form.inline input { flex-basis: 100%; }
 }

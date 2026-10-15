@@ -11,17 +11,21 @@
     <header>
       <button type="button" id="toggle-sidebar" aria-expanded="true" aria-controls="sidebar-body" title="Collapse sidebar">«</button>
       <h1>dash</h1>
-      <span id="queue" title="Job queue">…</span>
       <button type="button" id="toggle-conversations" aria-expanded="false" aria-controls="conversations">Chats</button>
     </header>
     <div id="sidebar-body">
-    <nav>
-      <button data-tab="chat" class="active">Chat</button>
-      <button data-tab="memories">Memories</button>
-      <button data-tab="apps">Apps</button>
-    </nav>
-    <button id="new-chat">+ New conversation</button>
-    <ul id="conversations"></ul>
+      <nav>
+        <a href="/" data-tab="chat">Chat</a>
+        <a href="/memories" data-tab="memories">Memories</a>
+        <a href="/apps" data-tab="apps">Apps</a>
+        <a href="/data" data-tab="data">Data</a>
+      </nav>
+      <div class="section-head">
+        <span>Chats</span>
+        <button type="button" id="new-chat" title="New conversation" aria-label="New conversation">+</button>
+      </div>
+      <ul id="conversations"></ul>
+      <footer id="queue" title="Job queue">…</footer>
     </div>
   </aside>
 
@@ -40,25 +44,30 @@
       <form id="memory-search">
         <input id="memory-q" type="search" placeholder="Search memories by meaning…">
       </form>
-      <form id="memory-add">
+      <form id="memory-add" class="inline">
         <input id="memory-new" placeholder="Add a memory, for example: The user prefers short answers.">
         <button type="submit">Add</button>
       </form>
-      <ul id="memory-list"></ul>
+      <ul id="memory-list" class="rows"></ul>
     </section>
 
     <section id="tab-apps" class="tab">
       <p class="hint">Connected apps keep their OAuth tokens in Nango. Hermes uses them through the <code>nango</code> skill.</p>
-      <button id="connect">+ Connect an app</button>
-      <ul id="app-list"></ul>
+      <div><button id="connect">+ Connect an app</button></div>
+      <ul id="app-list" class="rows"></ul>
       <h2>GitHub</h2>
       <p class="hint">dash creates a private GitHub App for you. Then you install it on the accounts that hermes can use.</p>
-      <form id="github-create">
+      <form id="github-create" class="inline">
         <input id="github-org" placeholder="Organization (empty for your personal account)">
         <button type="submit">+ Create GitHub App</button>
         <button type="button" id="github-sync">Refresh</button>
       </form>
-      <ul id="github-list"></ul>
+      <ul id="github-list" class="rows"></ul>
+    </section>
+
+    <section id="tab-data" class="tab">
+      <p class="hint">Data sources keep dash up to date while you are away. Each source has its own schedule.</p>
+      <div id="inputs"></div>
     </section>
   </main>
 

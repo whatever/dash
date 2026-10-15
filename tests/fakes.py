@@ -4,10 +4,11 @@ from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from dash.db import Authorization, Conversation, Memory, Message
+from dash.db import Authorization, Conversation, DataSource, Memory, Message
 from dash.github.api import Installation, NewApp
 from dash.github.db import APP, INSTALLATION, PROVIDER
 from dash.hermes import Delta
+from dash.sources.common import Source
 
 CLIENT_SECRET = "fake-client-secret"  # noqa: S105
 
@@ -209,3 +210,33 @@ class FakeGitHubApi:
     async def installations(self, app: Authorization) -> list[Installation]:
         """Return the fixed installations."""
         return self.installs
+
+
+class FakeSourceStore:
+    """In-memory SourceStore."""
+
+    def __init__(self) -> None:
+        self.rows: dict[int, DataSource] = {}
+        self._ids = itertools.count(1)
+
+    async def sources(self) -> list[DataSource]:
+        return list(self.rows.values())
+
+    async def add(self, source: Source, every_minutes: int) -> DataSource:
+        existing = next(
+            (r for r in self.rows.values() if (r.kind, r.target) == (source.kind, source.target)),
+            None,
+        )
+        row = existing or DataSource(id=next(self._ids), kind=source.kind, target=source.target)
+        row.every_minutes, row.enabled = every_minutes, True
+        self.rows[row.id] = row
+        return row
+
+    async def update(self, source_id: int, **values: Any) -> DataSource | None:
+        row = self.rows.get(source_id)
+        for key, value in values.items() if row else ():
+            setattr(row, key, value)
+        return row
+
+    async def delete(self, source_id: int) -> bool:
+        return self.rows.pop(source_id, None) is not None

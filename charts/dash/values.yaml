@@ -108,8 +108,9 @@ secrets:
   create: false
   values: {}
 
-# `dash scrape` on a schedule. Sources are web:<url>.
+# `dash scrape` on a schedule. It checks the sources from the Data panel that are due,
+# plus these fixed web:<url> sources on every run.
 scrape:
   enabled: true
-  schedule: "*/30 * * * *"
+  schedule: "*/5 * * * *"
   sources: []

@@ -1,36 +1,49 @@
-const $ = (sel) => document.querySelector(sel);
-const el = (tag, props = {}, ...children) => {
-  const node = Object.assign(document.createElement(tag), props);
-  node.append(...children);
-  return node;
-};
-
-async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...opts,
-    body: opts.body && JSON.stringify(opts.body),
-  });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-  return res.status === 204 ? null : res.json();
-}
+import { $, api, el } from "./lib.js";
+import inputs from "./inputs/index.js";
 
 const state = { conversation: null, config: {} };
 
-// Tabs
-document.querySelectorAll("nav button").forEach((btn) =>
-  btn.addEventListener("click", () => {
-    setConversationsOpen(false);
-    document.querySelectorAll("nav button, .tab").forEach((n) => n.classList.remove("active"));
-    btn.classList.add("active");
-    $(`#tab-${btn.dataset.tab}`).classList.add("active");
-    if (btn.dataset.tab === "memories") loadMemories();
-    if (btn.dataset.tab === "apps") {
-      loadApps();
-      loadGitHub();
-    }
+// Tabs and URLs
+const loaders = {
+  memories: () => loadMemories(),
+  apps: () => {
+    loadApps();
+    loadGitHub();
+  },
+  data: () => loadData(),
+};
+
+function showTab(tab) {
+  setConversationsOpen(false);
+  document.querySelectorAll("nav a, .tab").forEach((n) => n.classList.remove("active"));
+  document.querySelector(`nav a[data-tab="${tab}"]`).classList.add("active");
+  $(`#tab-${tab}`).classList.add("active");
+  loaders[tab]?.();
+}
+
+function go(path, { replace = false } = {}) {
+  if (path !== location.pathname) history[replace ? "replaceState" : "pushState"]({}, "", path);
+  route();
+}
+
+function route() {
+  const [, first, id] = location.pathname.split("/");
+  if (first === "c" && id) {
+    if (id !== state.conversation || !$("#messages").childElementCount) openConversation(id);
+    else showTab("chat");
+  } else {
+    showTab(first in loaders ? first : "chat");
+  }
+}
+
+document.querySelectorAll("nav a").forEach((link) =>
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    go(link.dataset.tab === "chat" && state.conversation ? `/c/${state.conversation}` : link.getAttribute("href"));
   }),
 );
+
+window.addEventListener("popstate", route);
 
 // Conversations
 function setConversationsOpen(open) {
@@ -71,12 +84,13 @@ async function loadConversations() {
           localStorage.removeItem("conversation");
           $("#messages").replaceChildren();
           setLoopy("idle");
+          go("/", { replace: true });
         }
         loadConversations();
       });
       const li = el("li", { title: c.title }, el("span", { textContent: c.title }), del);
       if (c.id === state.conversation) li.classList.add("active");
-      li.addEventListener("click", () => openConversation(c.id));
+      li.addEventListener("click", () => go(`/c/${c.id}`));
       return li;
     }),
   );
@@ -94,8 +108,16 @@ async function openConversation(id) {
   state.conversation = id;
   localStorage.setItem("conversation", id);
   setLoopy("idle");
-  document.querySelector('nav button[data-tab="chat"]').click();
-  const messages = await api(`/api/conversations/${id}/messages`);
+  showTab("chat");
+  let messages;
+  try {
+    messages = await api(`/api/conversations/${id}/messages`);
+  } catch {
+    state.conversation = null;
+    localStorage.removeItem("conversation");
+    go("/", { replace: true });
+    return;
+  }
   if (state.conversation !== id) return;
   $("#messages").replaceChildren();
   messages.forEach((m) => {
@@ -141,7 +163,7 @@ function clearPendingJob(conversation) {
 
 $("#new-chat").addEventListener("click", async () => {
   const c = await api("/api/conversations", { method: "POST" });
-  await openConversation(c.id);
+  go(`/c/${c.id}`);
   $("#input").focus();
 });
 
@@ -259,6 +281,8 @@ $("#composer").addEventListener("submit", async (e) => {
   if (!state.conversation) {
     const c = await api("/api/conversations", { method: "POST" });
     state.conversation = c.id;
+    localStorage.setItem("conversation", c.id);
+    history.replaceState({}, "", `/c/${c.id}`);
   }
   $("#input").value = "";
   bubble("user", content);
@@ -401,11 +425,31 @@ $("#github-create").addEventListener("submit", async (e) => {
   form.submit();
 });
 
+// Data sources
+async function loadData() {
+  let sources;
+  try {
+    sources = await api("/api/sources");
+  } catch (err) {
+    $("#inputs").replaceChildren(el("p", { className: "error", textContent: err.message }));
+    return;
+  }
+  $("#inputs").replaceChildren(
+    ...inputs.map((input) => {
+      const section = el("section", { className: "input" }, el("h2", { textContent: input.title }), el("p", { className: "hint", textContent: input.hint }));
+      input.mount(section, sources.filter((s) => s.kind === input.kind), loadData);
+      return section;
+    }),
+  );
+}
+
 // Queue badge
 async function pollQueue() {
   try {
     const q = await api("/api/queue");
-    $("#queue").textContent = `${q.in_flight} running · ${q.waiting} waiting · ${q.workers} workers`;
+    const busy = q.in_flight || q.waiting;
+    $("#queue").textContent = busy ? `${q.in_flight} running · ${q.waiting} waiting` : `idle · ${q.workers} workers`;
+    $("#queue").classList.toggle("busy", Boolean(busy));
   } catch {
     $("#queue").textContent = "queue offline";
   }
@@ -415,7 +459,7 @@ async function pollQueue() {
 state.config = await api("/api/config");
 const list = await loadConversations();
 const last = localStorage.getItem("conversation");
-if (last && list.some((c) => c.id === last)) openConversation(last);
-if (location.hash === "#apps") document.querySelector('nav button[data-tab="apps"]').click();
+if (location.pathname === "/" && last && list.some((c) => c.id === last)) history.replaceState({}, "", `/c/${last}`);
+route();
 pollQueue();
 setInterval(pollQueue, 5000);

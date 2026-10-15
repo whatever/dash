@@ -2,11 +2,15 @@ import asyncio
 import logging
 import os
 import signal
+from typing import TYPE_CHECKING
 
 import click
 import uvicorn
 
 from dash.config import Settings
+
+if TYPE_CHECKING:
+    from dash.sources.common import Report, Source
 
 
 @click.group()
@@ -49,17 +53,19 @@ def serve(*, host: str, port: int) -> None:
 def scrape(*, specs: tuple[str, ...], dry_run: bool) -> None:
     """Fetch real-world updates and enqueue new ones for the worker. Run it from a cron."""
     from dash.sources.common import Source
-    from dash.sources.web import run
 
     try:
         sources = [Source.parse(spec) for spec in specs]
     except ValueError as ex:
         raise click.BadParameter(str(ex), param_hint="--source") from ex
-    if not sources:
-        raise click.UsageError("No sources: pass --source or set SCRAPE_SOURCES.")
-    # Scraping only needs Redis, so don't demand DATABASE_URL like Settings.from_env().
+    database_url = os.environ.get("DATABASE_URL")
+    if not sources and not database_url:
+        raise click.UsageError(
+            "No sources: pass --source, set SCRAPE_SOURCES, or set DATABASE_URL."
+        )
+    # DATABASE_URL is optional here: without it, only the --source list runs.
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-    report = asyncio.run(run(sources, redis_url, dry_run=dry_run))
+    sources, report = asyncio.run(_scrape(sources, redis_url, database_url, dry_run=dry_run))
     for item in report.enqueued:
         click.echo(f"{'new' if dry_run else 'enqueued'} {item.source} {item.title} <{item.url}>")
     for source, error in report.failed.items():
@@ -72,6 +78,30 @@ def scrape(*, specs: tuple[str, ...], dry_run: bool) -> None:
     # Only fail the cron run when nothing worked, so one flaky site doesn't page anyone.
     if report.failed and len(report.failed) == len(sources):
         raise SystemExit(1)
+
+
+async def _scrape(
+    sources: list["Source"], redis_url: str, database_url: str | None, *, dry_run: bool
+) -> tuple[list["Source"], "Report"]:
+    """Return every scraped source and the report for the given and the due stored sources."""
+    from datetime import UTC, datetime
+
+    from dash.db import Store
+    from dash.sources.common import Source
+    from dash.sources.db import SourceStore
+    from dash.sources.scrape import run
+
+    if not database_url:
+        return sources, await run(sources, redis_url, dry_run=dry_run)
+    now = datetime.now(UTC)
+    async with Store.connect(database_url) as store:
+        stored = SourceStore(store.sessions)
+        due = await stored.due(now)
+        sources = list(dict.fromkeys([*sources, *(Source(row.kind, row.target) for row in due)]))
+        report = await run(sources, redis_url, dry_run=dry_run)
+        if not dry_run:
+            await stored.mark_checked([row.id for row in due], now)
+    return sources, report
 
 
 @main.command()

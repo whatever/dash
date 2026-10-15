@@ -10,7 +10,8 @@ import dash
 from dash.db import Store
 from dash.queue import JOBS, UPDATE, Job, Queue
 from dash.sources.common import Item, Source, plain
-from dash.sources.web import fetch, parse_page, scrape
+from dash.sources.inputs.web import Web, parse_page
+from dash.sources.scrape import scrape
 from dash.worker import Worker
 from tests.fakes import FakeChat, FakeEmbedder, FakeExtractor, FakeStore
 
@@ -47,8 +48,8 @@ async def test_fetch_gets_the_page() -> None:
         assert str(request.url) == "https://s/status"
         return httpx.Response(200, text=PAGE)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        (item,) = await fetch(Source.parse("web:https://s/status"), http)
+    web = Web("https://s/status", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    (item,) = await web.fetch()
     assert (item.source, item.url) == ("web:https://s/status", "https://s/status")
 
 
@@ -60,7 +61,7 @@ def queue() -> Queue:
 async def test_scrape_enqueues_only_new_items_and_survives_failures(queue: Queue) -> None:
     good, bad = Source.parse("web:https://ok/"), Source.parse("web:https://down/")
 
-    async def fetcher(source: Source, http: httpx.AsyncClient) -> list[Item]:
+    async def fetcher(source: Source) -> list[Item]:
         if source == bad:
             raise httpx.ConnectError("down")
         return page_items(source)
@@ -80,6 +81,22 @@ async def test_scrape_enqueues_only_new_items_and_survives_failures(queue: Queue
     assert job is not None
     assert job.kind == UPDATE
     assert job.data["title"] == "Status"
+
+
+async def test_scrape_without_deduplicate_enqueues_every_time(
+    queue: Queue, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(Web, "deduplicate", False)
+    source = Source.parse("web:https://ok/")
+
+    async def fetcher(source: Source) -> list[Item]:
+        return page_items(source)
+
+    first = await scrape([source], queue, fetcher=fetcher)
+    second = await scrape([source], queue, fetcher=fetcher)
+
+    assert (len(first.enqueued), len(second.enqueued)) == (1, 1)
+    assert await queue.redis.xlen(JOBS) == 2
 
 
 async def test_legacy_entries_are_chat_jobs(queue: Queue) -> None:
@@ -118,17 +135,19 @@ def test_cli_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(Queue, "from_url", from_url)
 
-    async def fake_fetch(source: Source, http: httpx.AsyncClient) -> list[Item]:
+    async def fake_fetch(source: Source) -> list[Item]:
         return page_items(source)
 
-    monkeypatch.setattr("dash.sources.web.fetch", fake_fetch)
+    monkeypatch.setattr("dash.sources.scrape.fetch", fake_fetch)
     result = CliRunner().invoke(dash.main, ["scrape", "-s", "web:https://n/", "--dry-run"])
     assert result.exit_code == 0, result.output
     assert "new web:https://n/ Status" in result.output
 
 
 def test_cli_needs_sources() -> None:
-    result = CliRunner().invoke(dash.main, ["scrape"], env={"SCRAPE_SOURCES": ""})
+    result = CliRunner().invoke(
+        dash.main, ["scrape"], env={"SCRAPE_SOURCES": "", "DATABASE_URL": ""}
+    )
     assert result.exit_code == 2
     assert "No sources" in result.output
     bad = CliRunner().invoke(dash.main, ["scrape", "-s", "rss:x"])

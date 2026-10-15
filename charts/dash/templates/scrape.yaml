@@ -1,5 +1,5 @@
-{{- if and .Values.scrape.enabled .Values.scrape.sources }}
-# Schedule only: `dash scrape` fetches sources, enqueues anything new as
+{{- if .Values.scrape.enabled }}
+# Schedule only: `dash scrape` fetches the sources that are due, enqueues anything new as
 # `update` jobs and exits. The worker stores them as memories.
 apiVersion: batch/v1
 kind: CronJob
@@ -32,6 +32,9 @@ spec:
               env:
                 - name: SCRAPE_SOURCES
                   value: {{ join " " .Values.scrape.sources | quote }}
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef: { name: {{ include "dash.postgresSecret" . }}, key: DASH_DATABASE_URL }
                 {{- if not .Values.redis.deploy }}
                 - name: REDIS_URL
                   valueFrom:
