@@ -1,0 +1,14 @@
+{
+  "name": "@dash/vendor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Third-party browser ES modules for src/dash/static. `npm run build` copies them into dist/.",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.0",
+    "marked": "^18.1.0"
+  }
+}

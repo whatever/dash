@@ -13,6 +13,12 @@ COPY webui/loopy/tsconfig.json ./
 COPY webui/loopy/src ./src
 RUN npm run build
 
+# Third-party browser modules (webui/vendor): npm ci, then copy the prebuilt ESM files to dist/.
+FROM node:24-alpine AS vendor
+WORKDIR /vendor
+COPY webui/vendor/package.json webui/vendor/package-lock.json webui/vendor/build.js ./
+RUN npm ci && npm run build
+
 FROM nginxinc/nginx-unprivileged:1.29-alpine
 
 # The entrypoint renders /etc/nginx/templates/*.template with envsubst into conf.d/.
@@ -24,5 +30,6 @@ COPY webui/default.conf.template /etc/nginx/templates/default.conf.template
 COPY src/dash/static/index.html /usr/share/nginx/html/index.html
 COPY src/dash/static/ /usr/share/nginx/html/static/
 COPY --from=loopy /loopy/dist/ /usr/share/nginx/html/static/loopy/
+COPY --from=vendor /vendor/dist/ /usr/share/nginx/html/static/vendor/
 
 EXPOSE 8080

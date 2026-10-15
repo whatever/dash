@@ -15,6 +15,13 @@ COPY webui/loopy/src ./src
 RUN npm run build
 
 
+# Third-party browser modules (webui/vendor): npm ci, then copy the prebuilt ESM files to dist/.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS vendor
+WORKDIR /vendor
+COPY webui/vendor/package.json webui/vendor/package-lock.json webui/vendor/build.js ./
+RUN npm ci && npm run build
+
+
 # Stage 2: build the virtual environment with uv.
 FROM python:3.13.13-slim-trixie AS build
 COPY --from=ghcr.io/astral-sh/uv:0.12.19 /uv /bin/uv
@@ -39,6 +46,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 # `dash serve` serves src/dash/static at /static, so the widget is at /static/loopy/loopy.js.
 COPY --from=loopy /loopy/dist/ ./src/dash/static/loopy/
+COPY --from=vendor /vendor/dist/ ./src/dash/static/vendor/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 
