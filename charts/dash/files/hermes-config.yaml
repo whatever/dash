@@ -44,5 +44,15 @@ toolsets:
   - session_search
   - todo
 
+{{- if .Values.hermes.sandbox.serena.enabled }}
+mcp_servers:
+  serena:
+    url: "http://dash-sandbox.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.hermes.sandbox.serena.port }}/mcp"
+    connect_timeout: 60
+    timeout: 120
+    tools:
+      exclude: [execute_shell_command]
+{{- end }}
+
 security:
   tirith_enabled: false
