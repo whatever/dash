@@ -33,4 +33,8 @@ class Web(InputSource):
         async with self._http() as http:
             response = await http.get(self.target)
         response.raise_for_status()
-        return parse_page(str(self), self.target, response.text)
+        return self.parse(response.text)
+
+    def parse(self, body: str) -> list[Item]:
+        """Turn the fetched HTML into items. Subclasses override this for site-specific parsing."""
+        return parse_page(str(self), self.target, body)
