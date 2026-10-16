@@ -193,6 +193,44 @@ spec:
             limits:
               cpu: "100m"
               memory: "64Mi"
+        {{- with .Values.hermes.sandbox.serena }}
+        {{- if .enabled }}
+        - name: serena
+          image: {{ .image }}
+          command:
+            - /workspaces/serena/.venv/bin/serena
+            - start-mcp-server
+            - --transport
+            - streamable-http
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ .port | quote }}
+            - --open-web-dashboard
+            - "false"
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          env:
+            - name: HOME
+              value: /serena-home
+            - name: SERENA_HOME
+              value: /serena-home/config
+          ports:
+            - name: serena
+              containerPort: {{ .port }}
+          readinessProbe:
+            tcpSocket: { port: serena }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /config
+            - name: serena-home
+              mountPath: /serena-home
+          resources: {{- toYaml .resources | nindent 12 }}
+        {{- end }}
+        {{- end }}
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -223,4 +261,8 @@ spec:
           configMap:
             name: github-refresher
             defaultMode: 0444
+        {{- if .Values.hermes.sandbox.serena.enabled }}
+        - name: serena-home
+          emptyDir: {}
+        {{- end }}
 {{- end }}
