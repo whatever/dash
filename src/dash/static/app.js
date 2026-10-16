@@ -452,7 +452,7 @@ async function loadData() {
   $("#inputs").replaceChildren(
     ...inputs.map((input) => {
       const section = el("section", { className: "input" }, el("h2", { textContent: input.title }), el("p", { className: "hint", textContent: input.hint }));
-      input.mount(section, sources.filter((s) => s.kind === input.kind), loadData);
+      input.mount(section, sources.filter((s) => (input.kinds || [input.kind]).includes(s.kind)), loadData);
       return section;
     }),
   );

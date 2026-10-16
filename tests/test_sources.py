@@ -10,6 +10,8 @@ import dash
 from dash.db import Store
 from dash.queue import JOBS, UPDATE, Job, Queue
 from dash.sources.common import Item, Source, plain
+from dash.sources.inputs.bushwick import BushwickDaily
+from dash.sources.inputs.hackernews import HackerNews
 from dash.sources.inputs.web import Web, parse_page
 from dash.sources.scrape import scrape
 from dash.worker import Worker
@@ -157,3 +159,58 @@ def test_cli_needs_sources() -> None:
 def test_update_payload_round_trips() -> None:
     (item,) = page_items(Source.parse("web:https://s/"))
     assert Item.from_dict(json.loads(json.dumps(item.to_dict()))) == item
+
+
+HN = (
+    '<table><tr class="athing submission" id="1"><td class="title"><span class="titleline">'
+    '<a href="https://ex.com/a">A &amp; B</a></span></td></tr><tr><td class="subtext">'
+    '<span class="score" id="score_1">12 points</span> '
+    '<span class="age" title="2026-10-15T23:37:42">'
+    '<a href="item?id=1">1 hour ago</a></span> | <a href="item?id=1">3&nbsp;comments</a></td></tr>'
+    '<tr class="athing submission" id="2"><td class="title"><span class="titleline">'
+    '<a href="item?id=2">Ask HN: x?</a></span></td></tr></table>'
+)
+
+BUSHWICK = (
+    '<article class="top-lede"><a href="/news/a/"><img alt="x"></a>'
+    '<h2 class="t"><a href="https://bushwickdaily.com/news/a/">Bar opens</a></h2>'
+    '<p class="lede-excerpt">A new <b>bar</b>.</p></article>'
+    '<article class="margin-teaser">'
+    '<h3><a href="https://bushwickdaily.com/news/a/">Bar opens</a></h3></article>'
+    '<article class="ad">no headline</article>'
+)
+
+
+def mock(body: str):
+    return lambda: httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, text=body))
+    )
+
+
+def test_site_kinds_parse() -> None:
+    assert Source.parse("hackernews:https://news.ycombinator.com/").kind == "hackernews"
+    assert Source.parse("bushwick:https://bushwickdaily.com/").kind == "bushwick"
+
+
+async def test_hackernews_one_item_per_story() -> None:
+    a, b = await HackerNews("https://news.ycombinator.com/", mock(HN)).fetch()
+    assert isinstance(HackerNews("u"), Web)
+    assert (a.key, a.title, a.url, a.published) == (
+        "1",
+        "A & B",
+        "https://ex.com/a",
+        "2026-10-15T23:37:42",
+    )
+    assert a.summary == "12 points · 3 comments · discussion https://news.ycombinator.com/item?id=1"
+    assert a.source == "hackernews:https://news.ycombinator.com/"
+    assert (b.key, b.url, b.summary) == ("2", "https://news.ycombinator.com/item?id=2", "")
+
+
+async def test_bushwick_one_item_per_article() -> None:
+    (a,) = await BushwickDaily("https://bushwickdaily.com/", mock(BUSHWICK)).fetch()
+    assert isinstance(BushwickDaily("u"), Web)
+    assert (a.key, a.title, a.summary) == (
+        "https://bushwickdaily.com/news/a/",
+        "Bar opens",
+        "A new bar .",
+    )

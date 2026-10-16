@@ -15,24 +15,48 @@ function row(source, reload) {
     reload();
   });
   const checked = source.checked_at ? `checked ${source.checked_at.slice(0, 16).replace("T", " ")}` : "not checked yet";
-  const meta = [source.enabled ? `every ${minutes(source.every_minutes)}` : "paused", checked].join(" · ");
+  const meta = [pageInput.labelOf(source.kind), source.enabled ? `every ${minutes(source.every_minutes)}` : "paused", checked].join(" · ");
   const link = el("a", { href: source.target, textContent: source.target, target: "_blank", rel: "noopener" });
   return el("li", {}, el("div", {}, link, el("div", { className: "meta", textContent: meta })), el("div", { className: "actions" }, toggle, remove));
 }
 
+// Sites with their own parser; any other URL is a plain `web` page.
+const HOSTS = {
+  "news.ycombinator.com": { kind: "hackernews", label: "Hacker News" },
+  "bushwickdaily.com": { kind: "bushwick", label: "Bushwick Daily" },
+};
+const WEB = { kind: "web", label: "page" };
+
+export const pageInput = {
+  kinds: ["web", ...Object.values(HOSTS).map((h) => h.kind)],
+
+  // The input source for a URL, picked by host name ("www." ignored).
+  fromUrl(url) {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    return HOSTS[host] || WEB;
+  },
+
+  labelOf(kind) {
+    return (Object.values(HOSTS).find((h) => h.kind === kind) || WEB).label;
+  },
+};
+
 export default {
   kind: "web",
+  kinds: pageInput.kinds,
   title: "Web",
-  hint: "dash checks each page on its schedule. When the visible text changes, hermes gets the new text as a memory.",
+  hint: "dash checks each page on its schedule. Hacker News and Bushwick Daily pages become one memory per new story; any other page becomes a memory when its visible text changes.",
   mount(container, sources, reload) {
-    const url = el("input", { type: "url", required: true, placeholder: "https://example.com/changelog" });
+    const url = el("input", { type: "url", required: true, placeholder: "https://news.ycombinator.com/" });
     const every = el("select", { title: "How often to check" }, ...EVERY.map((n) => el("option", { value: n, textContent: `every ${minutes(n)}`, selected: n === 60 })));
     const error = el("p", { className: "error" });
     const form = el("form", { className: "inline" }, url, every, el("button", { type: "submit", textContent: "+ Add page" }));
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       try {
-        await api("/api/sources", { method: "POST", body: { kind: "web", target: url.value.trim(), every_minutes: Number(every.value) } });
+        const target = url.value.trim();
+        const { kind } = pageInput.fromUrl(target);
+        await api("/api/sources", { method: "POST", body: { kind, target, every_minutes: Number(every.value) } });
         url.value = "";
         reload();
       } catch (err) {
