@@ -8,7 +8,7 @@ Chat turns are different: after a reply the worker asks the extraction model for
 
 **Goals**
 - Store what a scraped item says as standalone facts that recall can match against.
-- Make feeds first-class: one item per entry, with the entry's own text.
+- Work well on feeds, which the `add-atom-source` change turns into one item per entry.
 - Keep the cheap gate: no model runs for an item already seen.
 
 **Non-Goals**
@@ -26,13 +26,10 @@ Chat turns are different: after a reply the worker asks the extraction model for
 
 **The extractor sees up to 8,000 characters.** Chat already cuts each side at 8,000. Items carry the longer text only as far as the worker, and the stored memory is the extracted fact, not the page.
 
-**Atom entries are keyed by id.** GitHub and most feeds give each entry a stable id. Without one the link is the key. The hash-of-page-text key used by `web` is unsuitable for feeds because any new entry changes it.
-
 ## Risks / Trade-offs
 
 - A first scrape of a long feed makes one model call per entry. Operators who want to avoid that can start a source after the feed is mostly history, or a limit on entries per run could be added.
 - Extraction can drop detail the raw text kept. The raw text is not stored, so a bad prompt loses information permanently.
-- XML from an untrusted feed is parsed with the standard library. Expat 2.4.1 and later guard against entity-expansion attacks.
 
 ## Open questions
 

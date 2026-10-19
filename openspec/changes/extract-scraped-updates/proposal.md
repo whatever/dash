@@ -4,7 +4,7 @@
 
 ## What Changes
 
-- Add an `atom` source kind (`atom:<feed url>`). Each feed entry becomes one item keyed by its id, instead of the whole feed being flattened into one hashed page.
+- Build on the `atom` source kind from the `add-atom-source` change, so feeds give one item per entry.
 - Run each scraped item through the fact-extraction model before it is stored. A page-oriented prompt asks for the notable facts or changes in the item, not facts about the user. Each fact becomes its own memory, and the existing duplicate check applies per fact.
 - Give the extractor more of the page than the stored summary keeps, up to a fixed cap.
 - Sources that produce nothing worth keeping store nothing, so an unchanged-in-substance page costs one model call and no memory.
@@ -18,11 +18,11 @@ None.
 
 ### Modified Capabilities
 
-- `sources`: adds the `atom` kind, and changes the `update` job to store extracted facts instead of the raw item text.
+- `sources`: the `update` job stores extracted facts instead of the raw item text.
 
 ## Impact
 
-- Code: `sources/inputs/atom.py`, the `update` handler in `worker.py`, a new extraction prompt and method in `memory.py`, and `tests/`.
+- Code: the `update` handler in `worker.py`, a new extraction prompt and method in `memory.py`, and `tests/`.
 - Cost: one extraction call per new scraped item. A first scrape of a feed makes one call per entry.
 - Operators: no new settings are required. `EXTRACT_MODEL` already names the model.
 - Open design questions are in `design.md`. The two largest, whether this step should be a Hermes job and whether dash should write its own collectors, are not decided by this change.
