@@ -6,7 +6,8 @@
 
 ## 2. First check
 
-- [ ] 2.1 In the scrape, queue only the first 10 items of a source none of whose items were seen, and mark the rest seen. Verify: tests for 500 items, 8 items, and a source that has been checked before.
+- [ ] 2.1 Record that a source has been checked, with no expiry. Verify: a test that the record survives the seen window.
+- [ ] 2.2 On a source's first check, queue only the first 10 items and mark the rest seen. Verify: tests for 500 items, 8 items, a busy feed that has been checked before, and a check after 60 days.
 
 ## 3. Docs
 

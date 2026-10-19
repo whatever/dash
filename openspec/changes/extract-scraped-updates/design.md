@@ -24,13 +24,13 @@ Chat turns are different: after a reply the worker asks the extraction model for
 
 **Facts are stored one per memory, tagged with the source.** This keeps recall granular and lets the existing embedding-distance check dedupe at the fact level. Memories keep `source="scrape"` and the tags they have today.
 
-**A source starts from now.** With a model call per item, queuing a long feed's whole history on the first check is a bill and a flood. The first check of a source, recognised by none of its current items having been seen, queues the first 10 in the order the source returns them (newest first for feeds and listing pages) and marks the rest seen. This needs no new state: the seen keys already say whether a source has been checked. Alternatives: a per-source `backfill` setting (more control, more UI), or a per-run cap on every scrape (drops entries from a busy feed when more than the cap arrive between runs).
+**A source starts from now.** With a model call per item, queuing a long feed's whole history on the first check is a bill and a flood. The first check of a source queues the first 10 in the order the source returns them (newest first for feeds and listing pages) and marks the rest seen. Whether a source has been checked is recorded explicitly, as a key with no expiry. Inferring it from the seen keys would misfire: a busy feed whose 20 entries are all new would look like a first check, and so would any source after the 30-day seen window lapsed. Alternatives: a per-source `backfill` setting (more control, more UI), or a per-run cap on every scrape (drops entries from a busy feed when more than the cap arrive between runs).
 
 **The extractor sees up to 8,000 characters.** Chat already cuts each side at 8,000. Items carry the longer text only as far as the worker, and the stored memory is the extracted fact, not the page.
 
 ## Risks / Trade-offs
 
-- A source whose first check returns items that are all genuinely new, and more than 10, loses the older ones. The seen keys cannot tell that case from a long history.
+- If the queue's data is wiped, every source looks new again: 10 items are queued and the rest marked seen. Entries that scrolled out of a feed during an outage are not recoverable by any rule.
 - Extraction can drop detail the raw text kept. The raw text is not stored, so a bad prompt loses information permanently.
 
 ## Open questions

@@ -6,7 +6,7 @@
 
 - Build on the `atom` source kind from the `add-atom-source` change, so feeds give one item per entry.
 - Run each scraped item through the fact-extraction model before it is stored. A page-oriented prompt asks for the notable facts or changes in the item, not facts about the user. Each fact becomes its own memory, and the existing duplicate check applies per fact.
-- Start a source from now: its first check queues only the newest 10 items and marks the rest seen, so pointing dash at a long feed does not queue its whole history.
+- Start a source from now: its first check, recorded explicitly, queues only the newest 10 items and marks the rest seen, so pointing dash at a long feed does not queue its whole history. Later checks, however long the gap, queue everything new.
 - Give the extractor more of the page than the stored summary keeps, up to a fixed cap.
 - Sources that produce nothing worth keeping store nothing, so an unchanged-in-substance page costs one model call and no memory.
 - No change to how items are found: gating still happens before any model runs, because an item only reaches the worker when its key is new.

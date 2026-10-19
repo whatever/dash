@@ -26,7 +26,7 @@ When the worker processes an `update` job, it SHALL ask the extraction model for
 
 ### Requirement: An item is queued once
 
-A scrape SHALL queue an `update` job for an item only if its source and key have not been queued within the last 30 days. Marking an item as seen SHALL be atomic, so two scrapes at once queue it once. When none of a source's current items has been seen, which is its first check, the scrape SHALL queue only the first 10 items in the order the source returns them and mark the rest as seen without queuing them.
+A scrape SHALL queue an `update` job for an item only if its source and key have not been queued within the last 30 days. Marking an item as seen SHALL be atomic, so two scrapes at once queue it once. The scrape SHALL record, without expiry, that a source has been checked. The first check of a source, when no such record exists, SHALL queue only the first 10 items in the order the source returns them and mark the rest as seen without queuing them. Every later check SHALL queue all new items.
 
 #### Scenario: Repeat item
 
@@ -52,3 +52,13 @@ A scrape SHALL queue an `update` job for an item only if its source and key have
 
 - **WHEN** a source that has been checked before returns 30 items not seen before
 - **THEN** all 30 are queued
+
+#### Scenario: Busy feed
+
+- **WHEN** a source that has been checked before returns 20 entries, all new since the last check
+- **THEN** all 20 are queued
+
+#### Scenario: Long gap between checks
+
+- **WHEN** a source is checked again after 60 days, when every seen item has expired
+- **THEN** every item it returns is queued, not only the first 10
