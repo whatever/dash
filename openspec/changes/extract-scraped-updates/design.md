@@ -24,11 +24,13 @@ Chat turns are different: after a reply the worker asks the extraction model for
 
 **Facts are stored one per memory, tagged with the source.** This keeps recall granular and lets the existing embedding-distance check dedupe at the fact level. Memories keep `source="scrape"` and the tags they have today.
 
+**A source starts from now.** With a model call per item, queuing a long feed's whole history on the first check is a bill and a flood. The first check of a source, recognised by none of its current items having been seen, queues the first 10 in the order the source returns them (newest first for feeds and listing pages) and marks the rest seen. This needs no new state: the seen keys already say whether a source has been checked. Alternatives: a per-source `backfill` setting (more control, more UI), or a per-run cap on every scrape (drops entries from a busy feed when more than the cap arrive between runs).
+
 **The extractor sees up to 8,000 characters.** Chat already cuts each side at 8,000. Items carry the longer text only as far as the worker, and the stored memory is the extracted fact, not the page.
 
 ## Risks / Trade-offs
 
-- A first scrape of a long feed makes one model call per entry. Operators who want to avoid that can start a source after the feed is mostly history, or a limit on entries per run could be added.
+- A source whose first check returns items that are all genuinely new, and more than 10, loses the older ones. The seen keys cannot tell that case from a long history.
 - Extraction can drop detail the raw text kept. The raw text is not stored, so a bad prompt loses information permanently.
 
 ## Open questions
@@ -38,5 +40,7 @@ Chat turns are different: after a reply the worker asks the extraction model for
 **Should dash write its own collectors from chat?** Sites differ, which is why Hacker News and Bushwick Daily have their own parsers. Agents are good at writing that kind of code, so dash could be asked to watch a site and write the collector itself. That raises design questions this change does not answer: where the code is stored and run (a writable scripts directory in the sandbox is one option), how a script is registered as a source kind, what output contract it must follow (`Item` as JSON on stdout), and how its permissions are limited to the site or tools it needs, the way an agent session's are.
 
 **Should a run know what the last run produced?** Hermes jobs can feed a previous run's output into the next one. For a recurring digest that would let a run say what changed since last time. Nothing here needs it yet.
+
+**Is 10 the right starting point, and should it be configurable?** Ten is enough to show a feed working without a large first bill. A `backfill` count on the source would let an operator ask for more or none.
 
 **Should extraction be optional?** This change makes it the default for every scraped item. A setting to keep the raw-text behaviour would be a small addition if existing operators want it.

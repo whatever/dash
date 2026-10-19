@@ -23,3 +23,32 @@ When the worker processes an `update` job, it SHALL ask the extraction model for
 
 - **WHEN** one of three extracted facts is within 0.08 of a stored memory
 - **THEN** the other two are stored
+
+### Requirement: An item is queued once
+
+A scrape SHALL queue an `update` job for an item only if its source and key have not been queued within the last 30 days. Marking an item as seen SHALL be atomic, so two scrapes at once queue it once. When none of a source's current items has been seen, which is its first check, the scrape SHALL queue only the first 10 items in the order the source returns them and mark the rest as seen without queuing them.
+
+#### Scenario: Repeat item
+
+- **WHEN** a scrape finds an item whose source and key were queued yesterday
+- **THEN** no job is queued
+
+#### Scenario: Seen for a month
+
+- **WHEN** an item's source and key were last queued more than 30 days ago
+- **THEN** a scrape queues it again
+
+#### Scenario: First check of a long feed
+
+- **WHEN** a source is checked for the first time and returns 500 items
+- **THEN** 10 jobs are queued, and the other 490 items are marked seen so later scrapes do not queue them
+
+#### Scenario: First check of a short source
+
+- **WHEN** a source is checked for the first time and returns 8 items
+- **THEN** all 8 are queued
+
+#### Scenario: Later checks queue everything new
+
+- **WHEN** a source that has been checked before returns 30 items not seen before
+- **THEN** all 30 are queued
