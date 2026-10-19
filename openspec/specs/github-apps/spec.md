@@ -15,6 +15,15 @@ The system SHALL return a GitHub App manifest for a private app named by the req
 - **WHEN** a client posts to `/api/github/manifest` with no name
 - **THEN** the manifest is for a non-public app named `dash` with exactly those permissions and no default events
 
+### Requirement: Manifest permissions are defaults the owner can change
+
+The manifest's permissions SHALL be defaults that keep a new app read-mostly. The owner MAY change them in the app's settings on GitHub to match what dash should do, for example `contents: write` to push work. The system SHALL NOT depend on them after creation: clients built from stored credentials act with the app's current permissions.
+
+#### Scenario: Owner widens the app
+
+- **WHEN** the owner grants the app another permission on GitHub and accepts it for the installation
+- **THEN** clients built from the stored app and installation can use it without any change to dash
+
 ### Requirement: The manifest points back at dash
 
 The manifest's URLs SHALL be built on `PUBLIC_URL`, or on the request's base URL when that is unset. The response SHALL also give the GitHub URL that receives the manifest: the organization's app settings when an `org` is given, otherwise the user's.
@@ -64,12 +73,12 @@ When GitHub redirects back with a `code` and `state`, the system SHALL check the
 
 ### Requirement: Installations are copied from GitHub
 
-The system SHALL replace the stored installations of every stored app with the list GitHub returns, removing ones GitHub no longer lists. It SHALL do so when GitHub redirects to `/github/setup` (then redirect with 303 to `/#apps`) and when a client posts to `/api/github/sync` (which returns the current list).
+The system SHALL replace the stored installations of every stored app with the list GitHub returns, removing ones GitHub no longer lists. It SHALL do so when GitHub redirects to `/github/setup` (then redirect with 303 to `/apps`) and when a client posts to `/api/github/sync` (which returns the current list).
 
 #### Scenario: Installed after creation
 
 - **WHEN** the user finishes installing an app and GitHub redirects to `/github/setup`
-- **THEN** the app's installations are stored and the response is a 303 to `/#apps`
+- **THEN** the app's installations are stored and the response is a 303 to `/apps`
 
 #### Scenario: Uninstalled on GitHub
 
