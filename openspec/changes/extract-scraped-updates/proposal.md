@@ -14,11 +14,11 @@
 
 ### New Capabilities
 
-- `sources`: what `dash scrape` can read and how items become memories.
+None.
 
 ### Modified Capabilities
 
-None. The `memories` spec describes extraction after chat turns and stays as it is.
+- `sources`: adds the `atom` kind, and changes the `update` job to store extracted facts instead of the raw item text.
 
 ## Impact
 
