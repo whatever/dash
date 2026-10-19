@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Talk to the hermes agent in saved conversations. A message becomes a job on a Redis queue, a worker streams hermes's reply into a per-job event stream, and the browser follows that stream over server-sent events.
+Talk to the hermes agent in saved conversations. A message becomes a job on a Redis queue, a worker streams hermes's reply into a per-job event stream, and the browser follows that stream over server-sent events. The same queue also carries `update` jobs from `dash scrape`, covered by the `sources` spec.
 
 ## Requirements
 
@@ -19,6 +19,20 @@ The system SHALL store conversations and their messages. The conversation list S
 
 - **WHEN** a message is added to an older conversation
 - **THEN** that conversation is listed before conversations with no newer activity
+
+### Requirement: Conversations can be deleted and their messages read
+
+The system SHALL delete a conversation and its messages by id and return 204, or 404 if there is none. It SHALL list a conversation's messages in order, each with its `id`, `role`, `content` and the `events` its reply was shown with.
+
+#### Scenario: Unknown conversation
+
+- **WHEN** a client deletes a conversation id that does not exist
+- **THEN** the response is 404
+
+#### Scenario: Messages carry their events
+
+- **WHEN** a client lists the messages of a conversation with a streamed reply
+- **THEN** the assistant message includes the events shown while it streamed
 
 ### Requirement: The first message names the conversation
 
@@ -55,17 +69,22 @@ The system SHALL accept a user message for an existing conversation, store it, a
 
 ### Requirement: Replies come from hermes
 
-The worker SHALL answer a job by streaming a chat completion from the hermes router's OpenAI-compatible `/chat/completions` endpoint, using the model named by `HERMES_MODEL`. The request SHALL contain the conversation's full stored history in order. The worker SHALL send a bearer token only when `HERMES_API_KEY` is set.
+The worker SHALL answer a job by streaming a response from the hermes router's `/responses` endpoint, using the model named by `HERMES_MODEL`. The request SHALL name the conversation `dash:<conversation id>` and carry only the newest user message as its input, because hermes holds the earlier turns under that name. When memories were recalled, the request SHALL carry them as `instructions`. The worker SHALL send a bearer token only when `HERMES_API_KEY` is set.
 
-#### Scenario: Full history is sent
+#### Scenario: Only the new message is sent
 
 - **WHEN** a conversation has earlier messages and the user sends another
-- **THEN** hermes receives every stored message of that conversation in order, ending with the new user message
+- **THEN** hermes receives the new message under the conversation name `dash:<conversation id>`, not the stored history
 
-#### Scenario: Recalled memories lead the history
+#### Scenario: Recalled memories ride as instructions
 
 - **WHEN** memories were recalled for the job
-- **THEN** a system message listing them comes before the stored messages
+- **THEN** the request carries them as `instructions`
+
+#### Scenario: Nothing recalled
+
+- **WHEN** no memories were recalled
+- **THEN** the request carries no `instructions`
 
 #### Scenario: No API key
 
@@ -74,12 +93,12 @@ The worker SHALL answer a job by streaming a chat completion from the hermes rou
 
 ### Requirement: Replies stream as job events
 
-The worker SHALL append events to the job's own stream. A `delta` event SHALL carry reply text; the worker SHALL batch text so each event holds at least 48 characters, except the last. After the whole reply is stored as an `assistant` message, the worker SHALL append a `done` event carrying the `message_id`.
+The worker SHALL append events to the job's own stream: `delta` (reply text), `reasoning`, `memories` (the recalled text), and `tool` and `status` (hermes's progress). It SHALL batch text so each event holds at least 48 characters, except the last of a run. After the reply is stored as an `assistant` message, it SHALL append a `done` event carrying the `message_id`. The stored message SHALL keep the events shown, in order, so a reload can rebuild the reply.
 
 #### Scenario: Successful reply
 
 - **WHEN** hermes streams a reply
-- **THEN** the job's events are the `delta` events that spell out the reply, then `done`, and the full reply is stored as one assistant message
+- **THEN** the job's events include the `delta` events that spell out the reply, then `done`, and the full reply is stored as one assistant message with its events
 
 #### Scenario: Memories event
 
@@ -141,3 +160,12 @@ The system SHALL report the number of waiting jobs, jobs in flight, and workers 
 
 - **WHEN** one worker holds one job and none are waiting
 - **THEN** the report shows `in_flight` 1, `waiting` 0 and `workers` 1
+
+### Requirement: Every job is recorded on a live timeline
+
+Before handling a job, the worker SHALL record it with its job id, its kind (`chat` or `update`) and its data: a chat job's conversation id, an update job's item. The system SHALL list the newest 100 entries, newest first, at `/api/live`, each with its `id`, `kind`, `data` and creation time.
+
+#### Scenario: A chat job appears
+
+- **WHEN** the worker picks up a chat job
+- **THEN** `/api/live` lists an entry of kind `chat` with that conversation's id

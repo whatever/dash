@@ -13,7 +13,7 @@ The system SHALL store each memory with its text, a source, tags, a creation tim
 #### Scenario: Stored fields
 
 - **WHEN** a memory is added
-- **THEN** it keeps its text, its source (`manual` or `conversation`), its tags, and its embedding
+- **THEN** it keeps its text, its source (`manual`, `conversation` or `scrape`), its tags, and its embedding
 
 ### Requirement: Memories can be added by hand
 
