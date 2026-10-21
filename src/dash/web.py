@@ -194,6 +194,7 @@ def create_production_app() -> FastAPI:
     from dash.memory import Bedrock
     from dash.sources.api import create_router as create_sources_router
     from dash.sources.db import SourceStore
+    from dash.webhook import create_router as create_webhook_router
 
     settings = Settings.from_env()
     store = Store.from_url(settings.database_url)
@@ -223,6 +224,7 @@ def create_production_app() -> FastAPI:
                 public_url=settings.public_url,
             ),
             create_sources_router(store=SourceStore(store.sessions)),
+            create_webhook_router(store=store, queue=queue, secret=settings.webhook_secret),
         ],
         lifespan=lifespan,
     )
