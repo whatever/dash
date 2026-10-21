@@ -49,12 +49,18 @@ nango:
 # The agent the worker runs. model is a Pydantic AI model string.
 # baseUrl: an OpenAI-compatible API to send model requests to. Its key is AGENT_API_KEY in dash-agent.
 # thinking: minimal, low, medium, high or xhigh. Empty leaves it to the model.
+# toolPolicy: tool name (or <server>_*) to never, ask or auto. Unlisted tools are auto.
+# mcpServers: [{name, url, exclude: [tool]}], streamable-HTTP MCP servers whose tools the agent gets.
+# webSearch: the model's own web search where it has one, DuckDuckGo otherwise.
 agent:
   model: bedrock:global.anthropic.claude-opus-5-5
   baseUrl: ""
   thinking: low
   requestLimit: 60
   toolCallLimit: 100
+  toolPolicy: {}
+  mcpServers: []
+  webSearch: true
 
 # The ssh sandbox the agent runs commands in. Only it holds the Nango and GitHub tokens.
 sandbox:

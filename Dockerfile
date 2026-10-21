@@ -54,6 +54,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Stage 3: runtime. No uv, no build tools, no source, not root.
 FROM python:3.13.13-slim-trixie
 
+# The worker's run_command tool reaches the sandbox with the system ssh client.
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system app && useradd --system --gid app --no-create-home app
 
 COPY --from=build --chown=app:app /app/.venv /app/.venv

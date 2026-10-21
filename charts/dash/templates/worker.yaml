@@ -20,6 +20,23 @@ spec:
           imagePullPolicy: {{ .Values.dash.imagePullPolicy }}
           args: [worker]
           {{- include "dash.env" . | nindent 10 }}
+          {{- if .Values.sandbox.deploy }}
+          volumeMounts:
+            - name: sandbox-key
+              mountPath: /run/secrets/sandbox
+              readOnly: true
+          {{- end }}
           resources:
             requests: { cpu: 50m, memory: 256Mi }
             limits: { memory: 768Mi }
+      {{- if .Values.sandbox.deploy }}
+      volumes:
+        # The worker copies the key into a 0600 file of its own before using it.
+        - name: sandbox-key
+          secret:
+            secretName: dash-agent-ssh
+            defaultMode: 0444
+            items:
+              - key: PRIVATE_KEY
+                path: id_ed25519
+      {{- end }}
