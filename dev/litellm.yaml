@@ -1,5 +1,5 @@
 model_list:
-  - model_name: hermes-opus
+  - model_name: dash-opus
     litellm_params:
       model: bedrock/global.anthropic.claude-opus-5-5
       aws_region_name: us-east-1

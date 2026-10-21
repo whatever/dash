@@ -273,6 +273,11 @@ function follow(jobId, node, conversation) {
   return new Promise((resolve) => {
     const source = new EventSource(`/api/jobs/${jobId}/events`);
     const render = renderer(node);
+    const stop = $("#stop");
+    if (conversation === state.conversation) {
+      stop.hidden = false;
+      stop.onclick = () => api(`/api/jobs/${jobId}/stop`, { method: "POST" });
+    }
     source.onmessage = (e) => {
       const ev = JSON.parse(e.data);
       if (ev.kind === "delta") pulse();
@@ -281,6 +286,8 @@ function follow(jobId, node, conversation) {
       render(ev);
       if (ev.kind === "done" || ev.kind === "error") {
         source.close();
+        stop.hidden = true;
+        stop.onclick = null;
         clearPendingJob(conversation);
         resolve();
       }

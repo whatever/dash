@@ -15,7 +15,7 @@ from dash.sources.inputs.hackernews import HackerNews
 from dash.sources.inputs.web import Web, parse_page
 from dash.sources.scrape import scrape
 from dash.worker import Worker
-from tests.fakes import FakeChat, FakeEmbedder, FakeExtractor, FakeStore
+from tests.fakes import FakeEmbedder, FakeExtractor, FakeStore, ScriptedModel
 
 PAGE = "<html><title>Status</title><script>x()</script><body>All &amp; good</body></html>"
 
@@ -114,7 +114,7 @@ async def test_worker_stores_update_once(queue: Queue) -> None:
     worker = Worker(
         store=cast("Store", store),
         queue=queue,
-        chat=FakeChat([]),
+        agent=ScriptedModel().engine(),
         embedder=FakeEmbedder(),
         extractor=FakeExtractor([]),
         top_k=8,

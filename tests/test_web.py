@@ -86,6 +86,22 @@ def test_bad_job_id_rejected(client: TestClient) -> None:
     assert client.get("/api/jobs/a:b/events").status_code == 400
 
 
+def test_stop_marks_the_job(store: FakeStore) -> None:
+    server = fakeredis.FakeServer()
+    queue = Queue(fakeredis.FakeAsyncRedis(server=server, decode_responses=True))
+    app = create_app(
+        store=cast("Store", store),
+        queue=queue,
+        embedder=FakeEmbedder(),
+        nango=Nango("http://nango.invalid", ""),
+    )
+    client = TestClient(app)
+
+    assert client.post("/api/jobs/abc123/stop").status_code == 202
+    assert fakeredis.FakeRedis(server=server).exists("dash:stop:abc123") == 1
+    assert client.post("/api/jobs/not-ok!/stop").status_code == 400
+
+
 def test_nango_errors_become_502(store: FakeStore) -> None:
     def deny(_: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": "unauthorized"})

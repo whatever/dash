@@ -1,20 +1,23 @@
 """Consumes `dash:jobs`.
 
-`chat` jobs recall memories, stream a hermes reply and store new memories.
+`chat` jobs recall memories, run an agent turn, stream it and store new memories.
 `update` jobs (from `dash scrape`) store a real-world item as a memory.
 """
 
 import asyncio
+import contextlib
 import logging
 import socket
 import uuid
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import Mapping
 from typing import Any, Protocol
 
+from pydantic_ai import CancellationToken, Conversation
 from redis.exceptions import RedisError
 
+from dash.agent import Delta, Turn, history
+from dash.agent.engine import OnDelta
 from dash.db import Store
-from dash.hermes import Delta, conversation_key
 from dash.memory import (
     DUPLICATE_DISTANCE,
     RELEVANT_DISTANCE,
@@ -30,6 +33,7 @@ log = logging.getLogger(__name__)
 # Coalesce deltas so a fast model doesn't write one Redis entry per token.
 FLUSH_CHARS = 48
 RETRY_SECONDS = 2
+STOP_POLL_SECONDS = 0.5
 
 
 def record(log: list[dict[str, Any]], kind: str, data: Mapping[str, Any]) -> None:
@@ -40,10 +44,16 @@ def record(log: list[dict[str, Any]], kind: str, data: Mapping[str, Any]) -> Non
         log.append({"kind": kind, **data})
 
 
-class Chat(Protocol):
-    def stream(
-        self, conversation: str, text: str, instructions: str | None = None
-    ) -> AsyncIterator[Delta]: ...
+class AgentRunner(Protocol):
+    async def run(
+        self,
+        conversation: Conversation,
+        prompt: str,
+        *,
+        instructions: str | None,
+        on_delta: OnDelta,
+        cancel: CancellationToken,
+    ) -> Turn: ...
 
 
 class Worker:
@@ -52,14 +62,14 @@ class Worker:
         *,
         store: Store,
         queue: Queue,
-        chat: Chat,
+        agent: AgentRunner,
         embedder: Embedder,
         extractor: Extractor,
         top_k: int,
     ) -> None:
         self.store = store
         self.queue = queue
-        self.chat = chat
+        self.agent = agent
         self.embedder = embedder
         self.extractor = extractor
         self.top_k = top_k
@@ -112,13 +122,31 @@ class Worker:
         await self.queue.emit(job.job_id, "done", stored=True)
         log.info("stored update from %s: %s", item.source, item.title)
 
+    async def conversation(
+        self, conversation_id: uuid.UUID, earlier: list[tuple[str, str]]
+    ) -> Conversation:
+        """Return the stored turn history, or one seeded from the given earlier messages."""
+        stored = await self.store.turn_history(conversation_id)
+        return history.load(stored) if stored else history.seed(earlier)
+
+    async def watch_stop(self, job_id: str, cancel: CancellationToken) -> None:
+        """Cancel the turn once someone asks to stop the given job."""
+        while True:
+            try:
+                if await self.queue.stop_requested(job_id):
+                    cancel.cancel()
+                    return
+            except RedisError:
+                log.exception("stop check failed for job %s", job_id)
+            await asyncio.sleep(STOP_POLL_SECONDS)
+
     async def handle_chat(self, job: Job) -> None:
         conversation_id = uuid.UUID(job.conversation_id)
-        history = await self.store.messages(conversation_id)
-        if not history or history[-1].role != "user":
+        messages = await self.store.messages(conversation_id)
+        if not messages or messages[-1].role != "user":
             await self.queue.emit(job.job_id, "error", message="No user message to answer.")
             return
-        user_text = history[-1].content
+        user_text = messages[-1].content
         # Everything the UI is shown, in order, so the reply can be rebuilt after a reload.
         trail: list[dict[str, Any]] = []
 
@@ -130,10 +158,9 @@ class Worker:
         if memories:
             await emit("memories", items=memories)
 
-        # Hermes keeps the history under a conversation name derived from our id, so only
-        # the new message goes out; recalled memories ride along as this turn's instructions.
-        conversation = conversation_key(conversation_id)
-        instructions = system_prompt(memories)
+        conversation = await self.conversation(
+            conversation_id, [(m.role, m.content) for m in messages[:-1]]
+        )
 
         reply: list[str] = []
         buffers = {"text": "", "reasoning": ""}
@@ -144,30 +171,50 @@ class Worker:
                 await emit(events[kind], text=buffers[kind])
                 buffers[kind] = ""
 
+        async def on_delta(delta: Delta) -> None:
+            if delta.kind in buffers:
+                other = "reasoning" if delta.kind == "text" else "text"
+                await flush(other)
+                if delta.kind == "text":
+                    reply.append(delta.text)
+                buffers[delta.kind] += delta.text
+                if len(buffers[delta.kind]) >= FLUSH_CHARS:
+                    await flush(delta.kind)
+            else:
+                await flush("reasoning")
+                await flush("text")
+                await emit(delta.kind, **delta.data)
+
+        cancel = CancellationToken()
+        watcher = asyncio.create_task(self.watch_stop(job.job_id, cancel))
         try:
-            async for delta in self.chat.stream(conversation, user_text, instructions):
-                if delta.kind in buffers:
-                    other = "reasoning" if delta.kind == "text" else "text"
-                    await flush(other)
-                    if delta.kind == "text":
-                        reply.append(delta.text)
-                    buffers[delta.kind] += delta.text
-                    if len(buffers[delta.kind]) >= FLUSH_CHARS:
-                        await flush(delta.kind)
-                else:
-                    await flush("reasoning")
-                    await flush("text")
-                    await emit(delta.kind, **delta.data)
+            turn = await self.agent.run(
+                conversation,
+                user_text,
+                instructions=system_prompt(memories),
+                on_delta=on_delta,
+                cancel=cancel,
+            )
         except Exception as ex:
-            log.exception("hermes call failed")
-            await self.queue.emit(job.job_id, "error", message=f"hermes: {ex}")
+            log.exception("agent turn failed")
+            await self.queue.emit(job.job_id, "error", message=f"agent: {ex}")
             return
+        finally:
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
         await flush("reasoning")
         await flush("text")
 
         text = "".join(reply)
         message = await self.store.add_message(conversation_id, "assistant", text, trail)
-        await self.queue.emit(job.job_id, "done", message_id=message.id)
+        await self.store.save_turn_history(conversation_id, history.dump(turn.conversation))
+        done: dict[str, Any] = {"message_id": message.id}
+        if turn.stopped:
+            done["stopped"] = True
+        await self.queue.emit(job.job_id, "done", **done)
+        if turn.stopped:
+            return
         stored = await self.remember(user_text, text)
         if stored:
             log.info("stored %d new memories", stored)
