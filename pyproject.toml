@@ -1,7 +1,7 @@
 [project]
 name = "dash"
 version = "0.1.0"
-description = "Always-on assistant: web UI, Redis job queue, pgvector memories, Nango app keys, in front of hermes-agent."
+description = "Always-on assistant: web UI, Redis job queue, an in-process agent, pgvector memories, Nango app keys."
 readme = "README.md"
 authors = [
     { name = "Matt <3", email = "367789+whatever@users.noreply.github.com" }
@@ -16,6 +16,7 @@ dependencies = [
     "githubkit[auth-app]>=0.16.1",
     "httpx>=0.28.1",
     "pgvector>=0.4.1",
+    "pydantic-ai-slim[bedrock,mcp,openai]>=2.58",
     "redis>=6.4.0",
     "sqlalchemy[asyncio]>=2",
     "uvicorn[standard]>=0.54.0",

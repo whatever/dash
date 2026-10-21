@@ -1,14 +1,14 @@
 # dash
 
-An always-on assistant in front of [hermes-agent](https://github.com/whatever/geometry.dev/tree/main/apps/hermes-agent).
+An always-on assistant. Its agent runs inside the worker on [Pydantic AI](https://ai.pydantic.dev).
 
 | Part | What it does |
 |---|---|
 | Web UI (`src/dash/static`) | Chat, memories (list, search, add, delete), connected apps, and queue status. No build step. |
 | API (`dash serve`) | FastAPI. Stores each user message, then adds a job to the Redis stream `dash:jobs`. |
-| Worker (`dash worker`) | Reads `dash:jobs`, recalls memories from pgvector, and streams the hermes reply. Then it extracts new memories. |
+| Worker (`dash worker`) | Reads `dash:jobs`, recalls memories from pgvector, runs an agent turn and streams it. Each conversation's turn history, tool calls included, is stored in Postgres. Then it extracts new memories. |
 | Memories | Postgres + pgvector. Bedrock Titan v2 makes the embeddings. Bedrock Haiku extracts the facts. |
-| App keys | A self-hosted [Nango](https://nango.dev). Nango holds the OAuth tokens. dash and hermes ask Nango for them. |
+| App keys | A self-hosted [Nango](https://nango.dev). Nango holds the OAuth tokens. The sandbox reads them, so the agent never sees the Nango key. |
 | GitHub (`src/dash/github`) | Creates a private GitHub App from a manifest and stores its keys in the `authorizations` table. Use `app_client` and `installation_client` to call GitHub. |
 
 The browser follows a reply through `GET /api/jobs/<id>/events` (SSE). The worker writes each reply to its own Redis stream, so a page reload replays the reply from the start.
@@ -30,7 +30,7 @@ To run dash outside Docker:
 docker run -d --name pg -p 5432:5432 -e POSTGRES_PASSWORD=dash pgvector/pgvector:pg16
 docker run -d --name redis -p 6379:6379 redis:8-alpine
 export DATABASE_URL=postgresql://postgres:dash@localhost:5432/postgres
-export HERMES_BASE_URL=http://localhost:8642/v1 HERMES_API_KEY=...
+export AGENT_MODEL=bedrock:global.anthropic.claude-opus-5-5   # or AGENT_BASE_URL=... AGENT_MODEL=<name>
 uv run dash migrate
 uv run dash worker &
 uv run dash serve
@@ -65,7 +65,10 @@ dash stores the private key and secrets as plain JSONB. Protect the database.
 | `DATABASE_URL` | (required) |
 | `REDIS_URL` | `redis://localhost:6379/0` |
 | `PUBLIC_URL` | Browser-facing dash address for GitHub redirects. Empty means the request address. |
-| `HERMES_BASE_URL`, `HERMES_API_KEY`, `HERMES_MODEL` | `http://localhost:8642/v1`, empty, `hermes-opus` |
+| `AGENT_MODEL` | `bedrock:global.anthropic.claude-opus-5-5`. A Pydantic AI model string, or a model name at `AGENT_BASE_URL`. |
+| `AGENT_BASE_URL`, `AGENT_API_KEY` | Empty. An OpenAI-compatible `/v1` URL (LiteLLM, OpenRouter) and its key. |
+| `AGENT_THINKING` | Empty (the model's default). `minimal`, `low`, `medium`, `high` or `xhigh`. |
+| `AGENT_REQUEST_LIMIT`, `AGENT_TOOL_CALL_LIMIT` | `30`, `50`. A turn that would go past either ends with an error. |
 | `NANGO_URL`, `NANGO_SECRET_KEY` | `http://localhost:3003`, empty (disabled) |
 | `NANGO_PUBLIC_URL`, `NANGO_CONNECT_URL` | Browser-facing Nango API and Connect UI addresses |
 | `EMBED_MODEL`, `EXTRACT_MODEL`, `MEMORY_TOP_K` | Titan v2, Haiku 4.5, `8` |
@@ -86,9 +89,8 @@ Before the first sync, do these steps:
 1. On RDS, as the master user, create the `dash` and `nango` databases. Then run `CREATE EXTENSION vector` in `dash`.
 2. Add `DASH_DATABASE_URL` and `NANGO_DATABASE_URL` to `geometry/config`.
 3. Create `geometry/dash` with `NANGO_ENCRYPTION_KEY` and `NANGO_DASHBOARD_PASSWORD`. Make the key with `openssl rand -base64 32`. Do not rotate it.
-4. After Nango starts for the first time, copy `NANGO_SECRET_KEY` from its dashboard into `geometry/dash` and `geometry/hermes`.
+4. After Nango starts for the first time, copy `NANGO_SECRET_KEY` from its dashboard into `geometry/dash`.
 
-`hermes/skills/nango/SKILL.md` is the hermes skill for connected apps. To use it, copy it into your hermes skills.
 
 ## Checks
 

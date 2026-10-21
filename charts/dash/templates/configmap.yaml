@@ -8,8 +8,11 @@ data:
   {{- if .Values.redis.deploy }}
   REDIS_URL: redis://dash-redis:6379/0
   {{- end }}
-  HERMES_BASE_URL: {{ include "dash.hermesUrl" . }}
-  HERMES_MODEL: {{ .Values.hermes.model }}
+  AGENT_MODEL: {{ .Values.agent.model | quote }}
+  AGENT_BASE_URL: {{ .Values.agent.baseUrl | quote }}
+  AGENT_THINKING: {{ .Values.agent.thinking | quote }}
+  AGENT_REQUEST_LIMIT: {{ .Values.agent.requestLimit | quote }}
+  AGENT_TOOL_CALL_LIMIT: {{ .Values.agent.toolCallLimit | quote }}
   NANGO_URL: {{ include "dash.nangoUrl" . }}
   NANGO_PUBLIC_URL: {{ include "dash.nangoPublicUrl" . }}
   NANGO_CONNECT_URL: {{ include "dash.nangoConnectUrl" . }}

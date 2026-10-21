@@ -35,8 +35,9 @@
       <loopy-animation id="loopy" state="idle"></loopy-animation>
       <div id="messages"></div>
       <form id="composer">
-        <textarea id="input" rows="3" placeholder="Message hermes… (Enter sends, Shift+Enter is a new line)"></textarea>
+        <textarea id="input" rows="3" placeholder="Message dash… (Enter sends, Shift+Enter is a new line)"></textarea>
         <span id="pulse" title="Pulses on every streamed text event" aria-hidden="true"></span>
+        <button type="button" id="stop" hidden>Stop</button>
         <button type="submit">Send</button>
       </form>
     </section>
@@ -53,11 +54,11 @@
     </section>
 
     <section id="tab-apps" class="tab">
-      <p class="hint">Connected apps keep their OAuth tokens in Nango. Hermes uses them through the <code>nango</code> skill.</p>
+      <p class="hint">Connected apps keep their OAuth tokens in Nango. The agent uses them from its sandbox.</p>
       <div><button id="connect">+ Connect an app</button></div>
       <ul id="app-list" class="rows"></ul>
       <h2>GitHub</h2>
-      <p class="hint">dash creates a private GitHub App for you. Then you install it on the accounts that hermes can use.</p>
+      <p class="hint">dash creates a private GitHub App for you. Then you install it on the accounts that the agent can use.</p>
       <form id="github-create" class="inline">
         <input id="github-org" placeholder="Organization (empty for your personal account)">
         <button type="submit">+ Create GitHub App</button>

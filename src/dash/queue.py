@@ -36,6 +36,10 @@ def events_key(job_id: str) -> str:
     return f"dash:events:{job_id}"
 
 
+def stop_key(job_id: str) -> str:
+    return f"dash:stop:{job_id}"
+
+
 class Keyed(Protocol):
     @property
     def source(self) -> str: ...
@@ -124,6 +128,14 @@ class Queue:
     async def ack(self, job: Job) -> None:
         await self.redis.xack(JOBS, GROUP, job.entry_id)
         await self.redis.xdel(JOBS, job.entry_id)
+
+    async def request_stop(self, job_id: str) -> None:
+        """Ask the worker running the given job to stop it."""
+        await self.redis.set(stop_key(job_id), "1", ex=EVENTS_TTL_SECONDS)
+
+    async def stop_requested(self, job_id: str) -> bool:
+        """Return True if someone asked to stop the given job."""
+        return bool(await self.redis.exists(stop_key(job_id)))
 
     async def emit(self, job_id: str, kind: str, **data: object) -> None:
         key = events_key(job_id)

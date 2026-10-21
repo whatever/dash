@@ -1,4 +1,4 @@
-{{- if .Values.hermes.deploy }}
+{{- if .Values.sandbox.deploy }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

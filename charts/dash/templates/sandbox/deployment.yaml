@@ -1,4 +1,4 @@
-{{- if .Values.hermes.deploy }}
+{{- if .Values.sandbox.deploy }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,7 +17,7 @@ spec:
         checksum/scripts: {{ include (print $.Template.BasePath "/sandbox/scripts.yaml") . | sha256sum }}
     spec:
       initContainers:
-        # Hermes' ssh backend prepends `cd /config/workspace` to every
+        # The worker's run_command tool prepends `cd /config/workspace` to every
         # command, so the directory must exist before the first call.
         - name: seed-rc
           image: busybox:1.36
@@ -30,7 +30,7 @@ spec:
               for f in /config/.bashrc /config/.bash_profile /config/.profile; do
                 cat > "$f" <<'RC'
               export NANGO_CREDENTIALS_DIR=/run/secrets/nango
-              # A DEBUG trap, not PROMPT_COMMAND: Hermes runs non-interactive
+              # A DEBUG trap, not PROMPT_COMMAND: the worker runs non-interactive
               # `ssh host cmd`, and the token rotates mid-session.
               _refresh_gh_token() {
                 if [ -r /run/secrets/github/token ]; then
@@ -60,7 +60,7 @@ spec:
           image: alpine:3.20
           env:
             - name: GH_VERSION
-              value: {{ .Values.hermes.sandbox.ghVersion | quote }}
+              value: {{ .Values.sandbox.ghVersion | quote }}
           command:
             - sh
             - -c
@@ -69,9 +69,9 @@ spec:
               apk add --no-cache curl tar
 
               install_gh() {
-                curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_{{ .Values.hermes.sandbox.ghArch }}.tar.gz" \
+                curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_{{ .Values.sandbox.ghArch }}.tar.gz" \
                   | tar -xz -C /tmp
-                install -m 0755 "/tmp/gh_${GH_VERSION}_linux_{{ .Values.hermes.sandbox.ghArch }}/bin/gh" /tools/gh
+                install -m 0755 "/tmp/gh_${GH_VERSION}_linux_{{ .Values.sandbox.ghArch }}/bin/gh" /tools/gh
               }
 
               install_gh
@@ -80,7 +80,7 @@ spec:
               mountPath: /tools
       containers:
         - name: sshd
-          image: {{ .Values.hermes.sandbox.image }}
+          image: {{ .Values.sandbox.image }}
           env:
             - name: PUID
               value: "1000"
@@ -130,7 +130,7 @@ spec:
               command: [sh, -c, "nc -z localhost 2222 && command -v git python3 gh"]
             initialDelaySeconds: 10
             periodSeconds: 10
-          resources: {{- toYaml .Values.hermes.sandbox.resources | nindent 12 }}
+          resources: {{- toYaml .Values.sandbox.resources | nindent 12 }}
         # Holds NANGO_SECRET_KEY so the sshd container (and so the agent's
         # shell) never does. Only the per-connection credential files cross
         # over, through the shared tmpfs.

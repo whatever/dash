@@ -46,30 +46,26 @@ nango:
   url: ""
   connectUrl: ""
 
-# The hermes agent and its ssh sandbox.
-hermes:
+# The agent the worker runs. model is a Pydantic AI model string.
+# baseUrl: an OpenAI-compatible API to send model requests to. Its key is AGENT_API_KEY in dash-agent.
+# thinking: minimal, low, medium, high or xhigh. Empty leaves it to the model.
+agent:
+  model: bedrock:global.anthropic.claude-opus-5-5
+  baseUrl: ""
+  thinking: low
+  requestLimit: 30
+  toolCallLimit: 50
+
+# The ssh sandbox the agent runs commands in. Only it holds the Nango and GitHub tokens.
+sandbox:
   deploy: true
-  image: nousresearch/hermes-agent:v2026.9.24
-  model: hermes-opus
-  storage: 20Gi
+  image: lscr.io/linuxserver/openssh-server:10.2_p1-r0-ls226
+  storage: 10Gi
   resources:
-    requests: { cpu: 250m, memory: 1Gi }
-    limits: { cpu: "2", memory: 4Gi }
-  dashboard:
-    enabled: true
-    host: dash-agent.geometry.dev
-    # HERMES_DASHBOARD_BASIC_AUTH_{USERNAME,PASSWORD_HASH,SECRET}.
-    existingSecret: geometry-config
-  # When deploy is false: an OpenAI-compatible base URL. The API key is in dash-hermes.
-  url: ""
-  sandbox:
-    image: lscr.io/linuxserver/openssh-server:10.2_p1-r0-ls226
-    storage: 10Gi
-    resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits: { cpu: "1", memory: 2Gi }
-    ghVersion: "2.65.0"
-    ghArch: amd64
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 2Gi }
+  ghVersion: "2.65.0"
+  ghArch: amd64
 
 externalSecrets:
   enabled: true
@@ -78,12 +74,6 @@ externalSecrets:
     dash:
       key: geometry/dash
       data: [NANGO_DASHBOARD_PASSWORD, NANGO_ENCRYPTION_KEY, NANGO_SECRET_KEY]
-    dash-hermes:
-      key: geometry/dash
-      data: [API_SERVER_KEY]
-    dash-agent-env:
-      key: geometry/dash
-      data: [API_SERVER_KEY]
     dash-agent-ssh:
       key: geometry/dash
       data:

@@ -1,6 +1,6 @@
 # Local stack for dash. Same parts as geometry.dev/apps/dash, with local stand-ins:
-#   RDS → postgres (pgvector), hermes-router → hermes-agent → litellm → Bedrock.
-#   hermes-agent runs terminal commands over ssh in the sandbox container.
+#   RDS → postgres (pgvector), Bedrock → litellm → Bedrock.
+#   The worker's agent runs terminal commands over ssh in the sandbox container.
 #
 #   cp .env.example .env   # optional; see the comments in it
 #   docker compose up --build
@@ -8,7 +8,6 @@
 # Then open:
 #   http://localhost:8000   dash (served by the API)
 #   http://localhost:3003   Nango dashboard (needs NANGO_ENCRYPTION_KEY in .env)
-#   http://localhost:8642   hermes-agent API
 #   http://localhost:4000   LiteLLM (needs AWS credentials that can call Bedrock)
 
 name: dashes
@@ -25,9 +24,9 @@ x-dash-env: &dash-env
   <<: *aws-env
   DATABASE_URL: postgresql://dash:dash@postgres:5432/dash
   REDIS_URL: redis://redis:6379/0
-  HERMES_BASE_URL: ${HERMES_BASE_URL:-http://hermes-agent:8642/v1}
-  HERMES_API_KEY: ${HERMES_API_KEY:-sk-local-hermes-dev}
-  HERMES_MODEL: ${HERMES_MODEL:-hermes-opus}
+  AGENT_MODEL: ${AGENT_MODEL:-dash-opus}
+  AGENT_BASE_URL: ${AGENT_BASE_URL:-http://litellm:4000/v1}
+  AGENT_API_KEY: ${AGENT_API_KEY:-${LITELLM_MASTER_KEY:-sk-local}}
   NANGO_URL: http://nango:3003
   NANGO_PUBLIC_URL: http://localhost:3003
   NANGO_CONNECT_URL: http://localhost:3009
@@ -93,6 +92,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      litellm: { condition: service_healthy }
 
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
@@ -114,16 +114,12 @@ services:
       retries: 30
     restart: unless-stopped
 
-  hermes-seed:
+  sandbox-seed:
     image: alpine:3.20
     command: [/seed.sh]
-    environment:
-      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-local}
     volumes:
-      - ./dev/hermes-seed.sh:/seed.sh:ro
-      - ./dev/hermes-config.yaml:/etc/hermes/config.yaml:ro
-      - hermes:/opt/data
-      - hermes-ssh:/opt/data/.ssh
+      - ./dev/sandbox-seed.sh:/seed.sh:ro
+      - sandbox-ssh:/keys
     restart: "no"
 
   sandbox:
@@ -138,42 +134,14 @@ services:
       PUBLIC_KEY_FILE: /keys/id_ed25519.pub
     volumes:
       - sandbox:/config
-      - hermes-workspace:/config/workspace
-      - hermes-ssh:/keys:ro
+      - sandbox-ssh:/keys:ro
       - ./dev/sandbox-init.sh:/custom-cont-init.d/10-tools:ro
     healthcheck:
       test: [CMD, nc, -z, localhost, "2222"]
       interval: 5s
       retries: 30
     depends_on:
-      hermes-seed: { condition: service_completed_successfully }
-    restart: unless-stopped
-
-  hermes-agent:
-    image: nousresearch/hermes-agent:v2026.9.24
-    command: [gateway, run, --replace]
-    environment:
-      API_SERVER_ENABLED: "true"
-      API_SERVER_HOST: 0.0.0.0
-      API_SERVER_MODEL_NAME: hermes-opus
-      API_SERVER_KEY: ${HERMES_API_KEY:-sk-local-hermes-dev}
-      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-local}
-      TMPDIR: /opt/data/cache/vision-tmp
-    volumes:
-      - hermes:/opt/data
-      - hermes-ssh:/opt/data/.ssh
-      - hermes-workspace:/config/workspace
-    ports:
-      - 127.0.0.1:8642:8642
-    healthcheck:
-      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8642/health')"]
-      interval: 5s
-      start_period: 20s
-      retries: 30
-    depends_on:
-      hermes-seed: { condition: service_completed_successfully }
-      litellm: { condition: service_healthy }
-      sandbox: { condition: service_healthy }
+      sandbox-seed: { condition: service_completed_successfully }
     restart: unless-stopped
 
   nango:
@@ -201,7 +169,5 @@ services:
 volumes:
   postgres:
   redis:
-  hermes:
-  hermes-ssh:
-  hermes-workspace:
   sandbox:
+  sandbox-ssh:

@@ -61,7 +61,7 @@ def system_prompt(memories: Sequence[str]) -> str | None:
 
 class Bedrock:
     def __init__(self, embed_model: str, extract_model: str) -> None:
-        # Credentials and region come from the standard AWS env chain (hermes-bedrock secret).
+        # Credentials and region come from the standard AWS env chain (dash-bedrock secret).
         self._client: Any = boto3.client("bedrock-runtime")  # pyright: ignore[reportUnknownMemberType]
         self._embed_model = embed_model
         self._extract_model = extract_model
