@@ -26,4 +26,4 @@
 
 - [x] 5.1 Run the repo checks. Verify: `uv run ruff check`, `uv run ruff format --check`, `uv run pyright` and `uv run pytest` pass.
 - [x] 5.2 Validate the change. Verify: `openspec validate add-inbox --strict` passes.
-- [ ] 5.3 Archive `replace-hermes-with-agent-engine` before this change, then write the `## Purpose` of the new `agent-tools` and `inbox` specs and update the `chat` Purpose, which still names hermes. Verify: `openspec archive` applies both in order, and `openspec validate --all --strict` passes afterwards.
+- [x] 5.3 Archive `replace-hermes-with-agent-engine` before this change, then write the `## Purpose` of the new `agent-tools` and `inbox` specs and update the `chat` Purpose, which still names hermes. Verify: `openspec archive` applies both in order, and `openspec validate --all --strict` passes afterwards.
