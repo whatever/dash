@@ -69,7 +69,7 @@ dash stores the private key and secrets as plain JSONB. Protect the database.
 | `AGENT_BASE_URL`, `AGENT_API_KEY` | Empty. An OpenAI-compatible `/v1` URL (LiteLLM, OpenRouter) and its key. |
 | `AGENT_THINKING` | Empty (the model's default). `minimal`, `low`, `medium`, `high` or `xhigh`. |
 | `AGENT_REQUEST_LIMIT`, `AGENT_TOOL_CALL_LIMIT` | `60`, `100`. Each turn gets its own budget, and a turn that would go past either ends with an error. |
-| `AGENT_TOOL_POLICY` | Empty (every tool `auto`). A JSON object from a tool name, or `<server>_*`, to `never`, `ask` or `auto`. |
+| `AGENT_TOOL_POLICY` | Empty (every tool `auto`). A JSON object from a tool name, or `<server>_*`, to `never`, `ask` or `auto`. An `ask` call waits in the Inbox until someone allows or denies it. The chart sets `{"run_command": "ask"}`. |
 | `AGENT_MCP_SERVERS` | Empty. A JSON list of `{"name", "url", "exclude"}`: streamable-HTTP MCP servers whose tools the agent gets, named `<name>_<tool>`. |
 | `AGENT_WEB_SEARCH` | `on`: the model's own web search, or DuckDuckGo. `off` removes it. |
 | `SANDBOX_HOST`, `SANDBOX_PORT`, `SANDBOX_USER`, `SANDBOX_KEY_PATH` | Empty (no `run_command` tool), `2222`, `agent`, `/run/secrets/sandbox/id_ed25519`. Where `run_command` runs, over ssh. |

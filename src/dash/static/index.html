@@ -20,6 +20,7 @@
         <a href="/apps" data-tab="apps">Apps</a>
         <a href="/data" data-tab="data">Data</a>
         <a href="/live" data-tab="live">Live</a>
+        <a href="/inbox" data-tab="inbox">Inbox <span id="inbox-badge" class="badge" hidden></span></a>
       </nav>
       <div class="section-head">
         <span>Chats</span>
@@ -70,6 +71,11 @@
     <section id="tab-data" class="tab">
       <p class="hint">Data sources keep dash up to date while you are away. Each source has its own schedule.</p>
       <div id="inputs"></div>
+    </section>
+
+    <section id="tab-inbox" class="tab">
+      <p class="hint">Approvals the agent is waiting on, and messages it left you. Approvals expire after 24 hours.</p>
+      <ul id="inbox-list" class="rows"></ul>
     </section>
 
     <section id="tab-live" class="tab">

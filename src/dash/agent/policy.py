@@ -1,10 +1,12 @@
-"""Which tools the agent is offered, from `AGENT_TOOL_POLICY`."""
+"""Which tools the agent is offered and which need a person's approval, from `AGENT_TOOL_POLICY`."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, TypeAdapter
 from pydantic_ai import RunContext, ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset
+
+from dash.agent.deps import TurnDeps, call_key
 
 Verdict = Literal["never", "ask", "auto"]
 NEVER: Verdict = "never"
@@ -31,10 +33,18 @@ class ToolPolicy(BaseModel):
         servers = [key for key in self.rules if key.endswith("_*") and tool.startswith(key[:-1])]
         return self.rules[max(servers, key=len)] if servers else AUTO
 
-    def offered(self, toolset: AbstractToolset[None]) -> AbstractToolset[None]:
-        """Return the given toolset without the tools this policy does not let run."""
+    def offered(self, toolset: AbstractToolset[TurnDeps]) -> AbstractToolset[TurnDeps]:
+        """Return the given toolset without `never` tools, and with `ask` tools needing approval.
 
-        def runs(ctx: RunContext[None], tool: ToolDefinition) -> bool:
-            return self.verdict(tool.name) == AUTO
+        A call a saved rule approved runs without asking.
+        """
 
-        return toolset.filtered(runs)
+        def shown(ctx: RunContext[TurnDeps], tool: ToolDefinition) -> bool:
+            return self.verdict(tool.name) != NEVER
+
+        def asks(ctx: RunContext[TurnDeps], tool: ToolDefinition, args: dict[str, Any]) -> bool:
+            if self.verdict(tool.name) != ASK:
+                return False
+            return call_key(tool.name, args) not in ctx.deps.approved
+
+        return toolset.filtered(shown).approval_required(asks)

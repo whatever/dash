@@ -10,11 +10,22 @@ from pydantic_ai.models.function import AgentInfo, DeltaThinkingCalls, DeltaTool
 from pydantic_ai.toolsets import AbstractToolset
 
 from dash.agent import Engine, build_agent
+from dash.agent.deps import TurnDeps
 from dash.agent.mcp import ServerTools
 from dash.agent.policy import ToolPolicy
-from dash.db import Authorization, Conversation, DataSource, Memory, Message, TimelineEntry
+from dash.db import (
+    Authorization,
+    Conversation,
+    DataSource,
+    InboxItem,
+    Memory,
+    Message,
+    TimelineEntry,
+    ToolRule,
+)
 from dash.github.api import Installation, NewApp
 from dash.github.db import APP, INSTALLATION, PROVIDER
+from dash.inbox import APPROVAL, DENY, DISMISSED, EXPIRED, MESSAGE, OPEN, RESOLVED, SUPERSEDED
 from dash.sources.common import Source
 
 models.ALLOW_MODEL_REQUESTS = False
@@ -142,6 +153,107 @@ class FakeExtractor:
         return self.facts
 
 
+class FakeInboxStore:
+    """In-memory InboxStore."""
+
+    def __init__(self) -> None:
+        self.rows: list[InboxItem] = []
+        self.tool_rules: list[ToolRule] = []
+        self._ids = itertools.count(1)
+
+    async def add(
+        self,
+        *,
+        kind: str,
+        title: str,
+        body: str = "",
+        data: dict[str, Any],
+        conversation_id: uuid.UUID | None,
+        job_id: str,
+    ) -> InboxItem:
+        item = InboxItem(
+            id=next(self._ids),
+            kind=kind,
+            status=OPEN,
+            title=title,
+            body=body,
+            data=data,
+            conversation_id=conversation_id,
+            job_id=job_id,
+            created_at=datetime.now(UTC),
+        )
+        self.rows.append(item)
+        return item
+
+    async def items(self, *, open_only: bool = True, limit: int = 100) -> list[InboxItem]:
+        rows = [r for r in self.rows if r.status == OPEN or not open_only]
+        return rows[::-1][:limit]
+
+    async def count_open(self) -> int:
+        return sum(r.status == OPEN for r in self.rows)
+
+    async def item(self, item_id: int) -> InboxItem | None:
+        return next((r for r in self.rows if r.id == item_id), None)
+
+    def _close(self, item: InboxItem, status: str, resolution: dict[str, Any] | None) -> None:
+        item.status, item.resolution, item.resolved_at = status, resolution, datetime.now(UTC)
+
+    async def resolve(self, item_id: int, decision: str, reason: str = "") -> InboxItem | None:
+        item = await self.item(item_id)
+        if item is None or item.kind != APPROVAL or item.status != OPEN:
+            return None
+        self._close(item, RESOLVED, {"decision": decision, "reason": reason})
+        return item
+
+    async def dismiss(self, item_id: int) -> bool:
+        item = await self.item(item_id)
+        if item is None or item.kind != MESSAGE or item.status != OPEN:
+            return False
+        self._close(item, DISMISSED, None)
+        return True
+
+    async def open_in_turn(self, job_id: str) -> int:
+        return sum(
+            r.job_id == job_id and r.kind == APPROVAL and r.status == OPEN for r in self.rows
+        )
+
+    async def turn_approvals(self, job_id: str) -> list[InboxItem]:
+        return [r for r in self.rows if r.job_id == job_id and r.kind == APPROVAL]
+
+    async def conversation_approvals(self, conversation_id: uuid.UUID) -> list[InboxItem]:
+        return [r for r in self.rows if r.conversation_id == conversation_id and r.kind == APPROVAL]
+
+    async def supersede(self, conversation_id: uuid.UUID) -> int:
+        open_ones = [
+            r for r in await self.conversation_approvals(conversation_id) if r.status == OPEN
+        ]
+        for item in open_ones:
+            self._close(item, RESOLVED, {"decision": DENY, "reason": SUPERSEDED})
+        return len(open_ones)
+
+    async def expire(self, before: datetime) -> int:
+        old = [
+            r
+            for r in self.rows
+            if r.kind == APPROVAL and r.status == OPEN and r.created_at < before
+        ]
+        for item in old:
+            self._close(item, EXPIRED, None)
+        return len(old)
+
+    async def add_rule(self, tool: str, args: dict[str, Any]) -> None:
+        if not any(r.tool == tool and r.args == args for r in self.tool_rules):
+            self.tool_rules.append(ToolRule(id=next(self._ids), tool=tool, args=args))
+
+    async def rules(self) -> list[ToolRule]:
+        return list(self.tool_rules)
+
+    async def delete_rule(self, rule_id: int) -> bool:
+        before = len(self.tool_rules)
+        self.tool_rules = [r for r in self.tool_rules if r.id != rule_id]
+        return len(self.tool_rules) < before
+
+
 class ScriptedModel:
     """A model that streams one scripted response per request and records what it was sent."""
 
@@ -162,7 +274,7 @@ class ScriptedModel:
 
     def engine(
         self,
-        toolsets: Sequence[AbstractToolset[None]] = (),
+        toolsets: Sequence[AbstractToolset[TurnDeps]] = (),
         limits: UsageLimits | None = None,
         *,
         policy: ToolPolicy | None = None,

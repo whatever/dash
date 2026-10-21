@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
+from typing import Any
 
 from pydantic_ai import (
     Agent,
@@ -9,6 +10,8 @@ from pydantic_ai import (
     AgentStreamEvent,
     CancellationToken,
     Conversation,
+    DeferredToolRequests,
+    DeferredToolResults,
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     ModelSettings,
@@ -19,6 +22,7 @@ from pydantic_ai import (
     TextPartDelta,
     ThinkingPart,
     ThinkingPartDelta,
+    ToolCallPart,
     ToolReturnPart,
     UsageLimits,
 )
@@ -29,6 +33,7 @@ from pydantic_ai.providers.litellm import LiteLLMProvider
 from pydantic_ai.toolsets import AbstractToolset
 from pydantic_ai.usage import RunUsage
 
+from dash.agent.deps import TurnDeps
 from dash.agent.events import Delta, tool_label
 from dash.agent.mcp import ServerTools
 from dash.agent.policy import ToolPolicy
@@ -48,14 +53,26 @@ TOOL_STATUS = {
     "denied": "denied",
     "interrupted": "interrupted",
 }
+Output = str | DeferredToolRequests
+
+
+@dataclass(frozen=True)
+class WaitingCall:
+    """A tool call the turn stopped at until a person approves or denies it."""
+
+    tool_call_id: str
+    tool: str
+    args: dict[str, Any]
+    label: str
 
 
 @dataclass(frozen=True)
 class Turn:
-    """How a turn ended: the conversation to store, and whether it was stopped."""
+    """How a turn ended: the conversation to store, whether it was stopped, and what waits."""
 
     conversation: Conversation
     stopped: bool = False
+    waiting: list[WaitingCall] = field(default_factory=list[WaitingCall])
 
 
 def build_model(name: str, base_url: str = "", api_key: str = "") -> Model | str:
@@ -69,24 +86,25 @@ def build_model(name: str, base_url: str = "", api_key: str = "") -> Model | str
 def build_agent(
     model: Model | str,
     *,
-    toolsets: Sequence[AbstractToolset[None]] = (),
+    toolsets: Sequence[AbstractToolset[TurnDeps]] = (),
     policy: ToolPolicy | None = None,
     web_search: bool = False,
     thinking: Thinking | None = None,
-) -> Agent[None, str]:
+) -> Agent[TurnDeps, Output]:
     """Return the agent for the given model, tools and thinking level.
 
-    The policy hides the tools it does not let run. Web search uses the model's own search
-    where it has one, and DuckDuckGo otherwise.
+    The policy hides `never` tools and makes `ask` tools wait for approval. Web search uses
+    the model's own search where it has one, and DuckDuckGo otherwise.
     """
     policy = policy or ToolPolicy()
     settings = ModelSettings(thinking=thinking) if thinking else None
-    capabilities: list[AgentCapability[None]] = (
+    capabilities: list[AgentCapability[TurnDeps]] = (
         [WebSearch(local="duckduckgo")] if web_search else []
     )
     return Agent(
         model,
-        deps_type=type(None),
+        deps_type=TurnDeps,
+        output_type=[str, DeferredToolRequests],
         instructions=INSTRUCTIONS,
         toolsets=[policy.offered(t) for t in toolsets],
         capabilities=capabilities,
@@ -117,7 +135,7 @@ class Engine:
 
     def __init__(
         self,
-        agent: Agent[None, str],
+        agent: Agent[TurnDeps, Output],
         limits: UsageLimits,
         *,
         servers: Sequence[ServerTools] = (),
@@ -128,9 +146,9 @@ class Engine:
         self.servers = list(servers)
         self.policy = policy or ToolPolicy()
 
-    async def available(self, on_delta: OnDelta) -> list[AbstractToolset[None]]:
+    async def available(self, on_delta: OnDelta) -> list[AbstractToolset[TurnDeps]]:
         """Return the toolsets of the servers that answer, reporting the ones that don't."""
-        toolsets: list[AbstractToolset[None]] = []
+        toolsets: list[AbstractToolset[TurnDeps]] = []
         for server in self.servers:
             if await server.reachable():
                 toolsets.append(self.policy.offered(server.toolset))
@@ -142,20 +160,29 @@ class Engine:
     async def run(
         self,
         conversation: Conversation,
-        prompt: str,
+        prompt: str | None,
         *,
+        deps: TurnDeps,
         instructions: str | None,
         on_delta: OnDelta,
         cancel: CancellationToken,
+        answers: DeferredToolResults | None = None,
     ) -> Turn:
-        """Run one turn, stream it to `on_delta`, and return how it ended."""
+        """Run one turn, stream it to `on_delta`, and return how it ended.
+
+        `answers` carries a person's decisions on the calls the conversation waits on. A turn
+        with no new prompt only continues those calls.
+        """
         parts = StreamedParts()
         result: Conversation | None = None
+        waiting: list[WaitingCall] = []
         toolsets = await self.available(on_delta)
         try:
             async with self.agent.run_stream_events(
                 prompt,
                 conversation=replace(conversation, usage=RunUsage()),
+                deferred_tool_results=answers,
+                deps=deps,
                 instructions=instructions,
                 usage_limits=self.limits,
                 cancellation_token=cancel,
@@ -164,6 +191,8 @@ class Engine:
                 async for event in events:
                     if isinstance(event, AgentRunResultEvent):
                         result = event.result.conversation
+                        if isinstance(event.result.output, DeferredToolRequests):
+                            waiting = [_waiting(call) for call in event.result.output.approvals]
                         continue
                     for delta in _deltas(event, parts):
                         await on_delta(delta)
@@ -176,7 +205,14 @@ class Engine:
             return Turn(stopped, stopped=True)
         if result is None:
             raise RuntimeError("The run ended without a result.")
-        return Turn(result)
+        return Turn(result, waiting=waiting)
+
+
+def _waiting(call: ToolCallPart) -> WaitingCall:
+    """Return the given tool call as one waiting for approval."""
+    args = call.args_as_dict()
+    label = tool_label(args) or call.tool_name
+    return WaitingCall(call.tool_call_id, call.tool_name, args, label)
 
 
 def _deltas(event: AgentStreamEvent, parts: StreamedParts) -> list[Delta]:

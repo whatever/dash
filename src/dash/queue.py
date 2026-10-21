@@ -1,8 +1,9 @@
 """Redis streams job queue.
 
 `dash:jobs` holds one entry per job, read by the `workers` consumer group. A job's
-`kind` is `chat` (answer a conversation's last user turn) or `update` (a
-real-world item from `dash scrape` to remember).
+`kind` is `chat` (answer a conversation's last user turn), `update` (a
+real-world item from `dash scrape` to remember) or `resume` (continue a turn
+whose approvals were all answered).
 Each job also gets its own `dash:events:<job>` stream. The worker appends deltas
 there and the API replays it to the browser over SSE, so a page reload mid-reply
 picks up from the start.
@@ -30,6 +31,7 @@ SOCKET_TIMEOUT_SECONDS = 30
 SEEN_TTL_SECONDS = 30 * 24 * 3600
 CHAT = "chat"
 UPDATE = "update"
+RESUME = "resume"
 
 
 def events_key(job_id: str) -> str:
@@ -38,6 +40,10 @@ def events_key(job_id: str) -> str:
 
 def stop_key(job_id: str) -> str:
     return f"dash:stop:{job_id}"
+
+
+def resumed_key(turn_job_id: str) -> str:
+    return f"dash:resumed:{turn_job_id}"
 
 
 class Keyed(Protocol):
@@ -85,6 +91,20 @@ class Queue:
     async def enqueue_update(self, item: dict[str, Any]) -> str:
         job_id = uuid.uuid4().hex
         await self.redis.xadd(JOBS, {"job_id": job_id, "kind": UPDATE, "data": json.dumps(item)})
+        return job_id
+
+    async def enqueue_resume(
+        self, turn_job_id: str, conversation_id: str, item_ids: list[int]
+    ) -> str | None:
+        """Queue the one job that continues the given turn. Return None if it was already queued."""
+        if not await self.redis.set(resumed_key(turn_job_id), "1", nx=True, ex=SEEN_TTL_SECONDS):
+            return None
+        job_id = uuid.uuid4().hex
+        data = json.dumps({"item_ids": item_ids})
+        await self.redis.xadd(
+            JOBS,
+            {"job_id": job_id, "kind": RESUME, "conversation_id": conversation_id, "data": data},
+        )
         return job_id
 
     async def seen(self, item: Keyed) -> bool:

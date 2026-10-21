@@ -118,11 +118,13 @@ async def _worker() -> None:
     from pydantic_ai.toolsets import AbstractToolset
 
     from dash.agent import Engine, build_agent, build_model, mcp
+    from dash.agent.deps import TurnDeps
     from dash.agent.policy import ToolPolicy
     from dash.agent.sandbox import Sandbox, private_key_copy
-    from dash.agent.tools import memory_tools, sandbox_tools, web_tools
+    from dash.agent.tools import inbox_tools, memory_tools, sandbox_tools, web_tools
     from dash.agent.web import Fetcher
     from dash.db import Store
+    from dash.inbox.db import InboxStore
     from dash.memory import Bedrock
     from dash.queue import Queue
     from dash.worker import Worker
@@ -142,9 +144,11 @@ async def _worker() -> None:
         Store.connect(settings.database_url) as store,
         httpx.AsyncClient(timeout=20, headers={"User-Agent": "dash"}) as http,
     ):
-        toolsets: list[AbstractToolset[None]] = [
+        inbox = InboxStore(store.sessions)
+        toolsets: list[AbstractToolset[TurnDeps]] = [
             web_tools(Fetcher(http)),
             memory_tools(store, bedrock),
+            inbox_tools(inbox),
         ]
         if settings.sandbox_host:
             key = private_key_copy(Path(settings.sandbox_key_path))
@@ -167,6 +171,7 @@ async def _worker() -> None:
         try:
             await Worker(
                 store=store,
+                inbox=inbox,
                 queue=queue,
                 agent=engine,
                 embedder=bedrock,

@@ -50,6 +50,7 @@ nango:
 # baseUrl: an OpenAI-compatible API to send model requests to. Its key is AGENT_API_KEY in dash-agent.
 # thinking: minimal, low, medium, high or xhigh. Empty leaves it to the model.
 # toolPolicy: tool name (or <server>_*) to never, ask or auto. Unlisted tools are auto.
+#   An ask tool waits in the inbox for approval. Set {} to let run_command run unasked.
 # mcpServers: [{name, url, exclude: [tool]}], streamable-HTTP MCP servers whose tools the agent gets.
 # webSearch: the model's own web search where it has one, DuckDuckGo otherwise.
 agent:
@@ -58,7 +59,8 @@ agent:
   thinking: low
   requestLimit: 60
   toolCallLimit: 100
-  toolPolicy: {}
+  toolPolicy:
+    run_command: ask
   mcpServers: []
   webSearch: true
 

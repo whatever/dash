@@ -12,22 +12,24 @@ from pydantic_ai.toolsets import FunctionToolset
 
 from dash.agent import Engine
 from dash.agent import sandbox as sandbox_module
+from dash.agent.deps import TurnDeps
 from dash.agent.mcp import McpServer, ServerTools, parse
 from dash.agent.policy import ToolPolicy
 from dash.agent.sandbox import Sandbox, private_key_copy
 from dash.agent.tools import MemoryHit, memory_tools, sandbox_tools, web_tools
 from dash.agent.web import Fetcher, RefusedError, Resolve, is_public
 from dash.db import Store
+from dash.inbox.db import InboxStore
 from dash.queue import Job, Queue
 from dash.worker import Worker
-from tests.fakes import FakeEmbedder, FakeExtractor, FakeStore, ScriptedModel
+from tests.fakes import FakeEmbedder, FakeExtractor, FakeInboxStore, FakeStore, ScriptedModel
 
 SANDBOX = Sandbox("dash-sandbox", 2222, "agent", Path("/keys/id"))
 
 Tool = Callable[[str], Awaitable[Any]]
 
 
-def tool(toolset: FunctionToolset[None], name: str) -> Tool:
+def tool(toolset: FunctionToolset[TurnDeps], name: str) -> Tool:
     return cast("Tool", toolset.tools[name].function)
 
 
@@ -254,8 +256,8 @@ def test_policy_verdicts() -> None:
     assert ToolPolicy.parse("").verdict("anything") == "auto"
 
 
-def server_tools() -> FunctionToolset[None]:
-    tools = FunctionToolset[None]()
+def server_tools() -> FunctionToolset[TurnDeps]:
+    tools = FunctionToolset[TurnDeps]()
 
     @tools.tool_plain
     def find(pattern: str) -> str:
@@ -276,6 +278,7 @@ async def offered(model: ScriptedModel, engine: Engine) -> list[str]:
     await store.add_message(conv.id, "user", "hi")
     worker = Worker(
         store=cast("Store", store),
+        inbox=cast("InboxStore", FakeInboxStore()),
         queue=Queue(fakeredis.FakeAsyncRedis(decode_responses=True)),
         agent=engine,
         embedder=FakeEmbedder(),
@@ -310,6 +313,7 @@ async def test_an_unreachable_server_is_left_out_with_a_status() -> None:
     queue = Queue(fakeredis.FakeAsyncRedis(decode_responses=True))
     worker = Worker(
         store=cast("Store", store),
+        inbox=cast("InboxStore", FakeInboxStore()),
         queue=queue,
         agent=model.engine(servers=[down]),
         embedder=FakeEmbedder(),

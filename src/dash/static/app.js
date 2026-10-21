@@ -14,6 +14,7 @@ const loaders = {
   },
   data: () => loadData(),
   live: () => loadLive(),
+  inbox: () => loadInbox(),
 };
 
 function showTab(tab) {
@@ -254,6 +255,11 @@ function renderer(node) {
       if (ev.label || !row.label) row.label = ev.label || ev.tool;
       row.dataset.status = ev.status || "running";
       row.textContent = `${ev.emoji || "\u{1F527}"} ${ev.tool}${row.label && row.label !== ev.tool ? `: ${row.label}` : ""}`;
+    } else if (ev.kind === "approval") {
+      settle();
+      const row = tools.get(ev.toolCallId);
+      if (row) row.dataset.status = "waiting";
+      trace.append(approvalCard(ev));
     } else if (ev.kind === "status") {
       trace.append(el("div", { className: "status", textContent: ev.message || JSON.stringify(ev) }));
     } else if (ev.kind === "memories") {
@@ -267,6 +273,37 @@ function renderer(node) {
       }
     }
   };
+}
+
+// An approval the turn stopped at. Answering the last one of a turn resumes it in a new reply.
+function approvalCard(ev) {
+  const card = el("div", { className: "approval" }, el("div", { textContent: `Run ${ev.tool}: ${ev.label}?` }));
+  const buttons = el("div", { className: "actions" });
+  const decide = async (decision) => {
+    buttons.replaceChildren(el("span", { textContent: "…" }));
+    try {
+      const { job_id } = await answer(ev.item_id, decision);
+      buttons.replaceChildren(el("span", { textContent: decision === "deny" ? "Denied" : "Allowed" }));
+      if (job_id && state.conversation) {
+        const reply = bubble("assistant", "…");
+        setPendingJob(state.conversation, job_id);
+        await follow(job_id, reply, state.conversation);
+      }
+    } catch (err) {
+      buttons.replaceChildren(el("span", { textContent: err.message.startsWith("409") ? "Already answered" : err.message }));
+    }
+  };
+  for (const [label, decision] of [["Allow", "allow"], ["Always allow this", "allow_always"], ["Deny", "deny"]]) {
+    buttons.append(el("button", { type: "button", textContent: label, onclick: () => decide(decision) }));
+  }
+  card.append(buttons);
+  return card;
+}
+
+async function answer(itemId, decision) {
+  const result = await api(`/api/inbox/${itemId}/resolve`, { method: "POST", body: { decision } });
+  pollInbox();
+  return result;
 }
 
 function follow(jobId, node, conversation) {
@@ -288,6 +325,7 @@ function follow(jobId, node, conversation) {
         source.close();
         stop.hidden = true;
         stop.onclick = null;
+        pollInbox();
         clearPendingJob(conversation);
         resolve();
       }
@@ -469,6 +507,7 @@ async function loadData() {
 function liveText(e) {
   if (e.kind === "chat") return [`Chat message (${e.data.conversation_id.slice(0, 8)})`, `/c/${e.data.conversation_id}`, null];
   if (e.kind === "update") return [`Update: ${e.data.title || e.data.url}`, e.data.url, e.data.source];
+  if (e.kind === "resume") return [`Resumed after approval (${e.data.conversation_id.slice(0, 8)})`, `/c/${e.data.conversation_id}`, null];
   return [`${e.kind}: ${JSON.stringify(e.data)}`, null, null];
 }
 
@@ -493,6 +532,53 @@ async function loadLive() {
   if (!entries.length) $("#live-list").append(el("li", { textContent: "Nothing yet." }));
 }
 
+// Inbox: approvals the agent waits on, and messages it left.
+function inboxRow(item) {
+  const head = el("div", {}, el("strong", { textContent: item.title }));
+  if (item.body) head.append(el("div", { className: item.kind === "approval" ? "tool" : "", textContent: item.body }));
+  for (const url of item.data.sources || []) head.append(el("div", {}, el("a", { href: url, target: "_blank", rel: "noopener noreferrer", textContent: url })));
+  const meta = [new Date(item.created_at).toLocaleString()];
+  const links = el("div", { className: "meta", textContent: meta.join(" · ") });
+  if (item.conversation_id) links.append(" · ", el("a", { href: `/c/${item.conversation_id}`, textContent: "conversation" }));
+  head.append(links);
+  const actions = el("div", { className: "actions" });
+  const act = (label, run) => el("button", { type: "button", textContent: label, onclick: async () => { await run(); loadInbox(); } });
+  if (item.kind === "approval") {
+    actions.append(
+      act("Allow", () => answer(item.id, "allow")),
+      act("Always", () => answer(item.id, "allow_always")),
+      act("Deny", () => answer(item.id, "deny")),
+    );
+  } else {
+    actions.append(act("Dismiss", () => api(`/api/inbox/${item.id}/dismiss`, { method: "POST" }).then(pollInbox)));
+  }
+  const li = el("li", {}, head, actions);
+  li.dataset.kind = item.kind;
+  return li;
+}
+
+async function loadInbox() {
+  let items;
+  try {
+    items = await api("/api/inbox");
+  } catch (err) {
+    $("#inbox-list").replaceChildren(el("li", { className: "error", textContent: err.message }));
+    return;
+  }
+  $("#inbox-list").replaceChildren(...items.map(inboxRow));
+  if (!items.length) $("#inbox-list").append(el("li", { textContent: "Nothing waiting." }));
+}
+
+async function pollInbox() {
+  try {
+    const { open } = await api("/api/inbox/count");
+    $("#inbox-badge").textContent = String(open);
+    $("#inbox-badge").hidden = !open;
+  } catch {
+    $("#inbox-badge").hidden = true;
+  }
+}
+
 // Queue badge
 async function pollQueue() {
   try {
@@ -512,7 +598,12 @@ const last = localStorage.getItem("conversation");
 if (location.pathname === "/" && last && list.some((c) => c.id === last)) history.replaceState({}, "", `/c/${last}`);
 route();
 pollQueue();
+pollInbox();
 setInterval(() => {
   pollQueue();
   if ($("#tab-live").classList.contains("active")) loadLive();
 }, 5000);
+setInterval(() => {
+  pollInbox();
+  if ($("#tab-inbox").classList.contains("active")) loadInbox();
+}, 15000);

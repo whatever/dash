@@ -64,6 +64,7 @@ def create_app(
     @app.get("/apps")
     @app.get("/data")
     @app.get("/live")
+    @app.get("/inbox")
     async def index() -> FileResponse:
         return FileResponse(STATIC / "index.html")
 
@@ -198,6 +199,8 @@ def create_app(
 def create_production_app() -> FastAPI:
     """uvicorn factory: wires real Postgres, Redis, Bedrock and Nango from the environment."""
     from dash.github import GitHubApi, GitHubStore, create_router
+    from dash.inbox.api import create_router as create_inbox_router
+    from dash.inbox.db import InboxStore
     from dash.memory import Bedrock
     from dash.sources.api import create_router as create_sources_router
     from dash.sources.db import SourceStore
@@ -230,6 +233,7 @@ def create_production_app() -> FastAPI:
                 public_url=settings.public_url,
             ),
             create_sources_router(store=SourceStore(store.sessions)),
+            create_inbox_router(store=InboxStore(store.sessions), queue=queue),
         ],
         lifespan=lifespan,
     )
