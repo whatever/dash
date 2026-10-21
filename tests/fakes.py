@@ -10,6 +10,8 @@ from pydantic_ai.models.function import AgentInfo, DeltaThinkingCalls, DeltaTool
 from pydantic_ai.toolsets import AbstractToolset
 
 from dash.agent import Engine, build_agent
+from dash.agent.mcp import ServerTools
+from dash.agent.policy import ToolPolicy
 from dash.db import Authorization, Conversation, DataSource, Memory, Message, TimelineEntry
 from dash.github.api import Installation, NewApp
 from dash.github.db import APP, INSTALLATION, PROVIDER
@@ -162,10 +164,14 @@ class ScriptedModel:
         self,
         toolsets: Sequence[AbstractToolset[None]] = (),
         limits: UsageLimits | None = None,
+        *,
+        policy: ToolPolicy | None = None,
+        servers: Sequence[ServerTools] = (),
     ) -> Engine:
         """Return an engine that answers with this model."""
-        agent = build_agent(FunctionModel(stream_function=self.stream), toolsets=toolsets)
-        return Engine(agent, limits or UsageLimits())
+        model = FunctionModel(stream_function=self.stream)
+        agent = build_agent(model, toolsets=toolsets, policy=policy)
+        return Engine(agent, limits or UsageLimits(), servers=servers, policy=policy)
 
 
 class FakeGitHubStore:

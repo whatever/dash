@@ -35,6 +35,13 @@ class Settings:
     agent_thinking: Thinking | None
     agent_request_limit: int
     agent_tool_call_limit: int
+    agent_tool_policy: str
+    agent_mcp_servers: str
+    agent_web_search: bool
+    sandbox_host: str
+    sandbox_port: int
+    sandbox_user: str
+    sandbox_key_path: str
     nango_url: str
     nango_public_url: str
     nango_connect_url: str
@@ -55,6 +62,13 @@ class Settings:
             agent_thinking=_thinking(_env("AGENT_THINKING", "")),
             agent_request_limit=int(_env("AGENT_REQUEST_LIMIT", "30")),
             agent_tool_call_limit=int(_env("AGENT_TOOL_CALL_LIMIT", "50")),
+            agent_tool_policy=_env("AGENT_TOOL_POLICY", ""),
+            agent_mcp_servers=_env("AGENT_MCP_SERVERS", ""),
+            agent_web_search=_env("AGENT_WEB_SEARCH", "on") != "off",
+            sandbox_host=_env("SANDBOX_HOST", ""),
+            sandbox_port=int(_env("SANDBOX_PORT", "2222")),
+            sandbox_user=_env("SANDBOX_USER", "agent"),
+            sandbox_key_path=_env("SANDBOX_KEY_PATH", "/run/secrets/sandbox/id_ed25519"),
             nango_url=_env("NANGO_URL", "http://localhost:3003").rstrip("/"),
             # Browser-facing addresses. Empty means "same as NANGO_URL".
             nango_public_url=_env("NANGO_PUBLIC_URL", "").rstrip("/"),

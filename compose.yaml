@@ -89,10 +89,18 @@ services:
   worker:
     <<: *dash
     command: [worker]
+    environment:
+      <<: *dash-env
+      SANDBOX_HOST: sandbox
+      SANDBOX_KEY_PATH: /run/secrets/sandbox/id_ed25519
+    volumes:
+      - ${HOME}/.aws:/aws:ro
+      - sandbox-ssh:/run/secrets/sandbox:ro
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       litellm: { condition: service_healthy }
+      sandbox: { condition: service_healthy }
 
   litellm:
     image: ghcr.io/berriai/litellm:main-stable

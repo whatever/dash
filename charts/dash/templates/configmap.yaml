@@ -13,6 +13,12 @@ data:
   AGENT_THINKING: {{ .Values.agent.thinking | quote }}
   AGENT_REQUEST_LIMIT: {{ .Values.agent.requestLimit | quote }}
   AGENT_TOOL_CALL_LIMIT: {{ .Values.agent.toolCallLimit | quote }}
+  AGENT_TOOL_POLICY: {{ .Values.agent.toolPolicy | toJson | quote }}
+  AGENT_MCP_SERVERS: {{ .Values.agent.mcpServers | toJson | quote }}
+  AGENT_WEB_SEARCH: {{ ternary "on" "off" .Values.agent.webSearch | quote }}
+  {{- if .Values.sandbox.deploy }}
+  SANDBOX_HOST: dash-sandbox
+  {{- end }}
   NANGO_URL: {{ include "dash.nangoUrl" . }}
   NANGO_PUBLIC_URL: {{ include "dash.nangoPublicUrl" . }}
   NANGO_CONNECT_URL: {{ include "dash.nangoConnectUrl" . }}
