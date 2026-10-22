@@ -20,7 +20,7 @@ from redis.exceptions import RedisError
 
 from dash.agent import Delta, Turn, history
 from dash.agent.answers import answers
-from dash.agent.deps import TurnDeps, call_key
+from dash.agent.deps import TurnDeps
 from dash.agent.engine import OnDelta
 from dash.db import Store
 from dash.inbox import APPROVAL, APPROVAL_HOURS
@@ -251,7 +251,7 @@ class Worker:
                 await flush("text")
                 await emit(delta.kind, **delta.data)
 
-        approved = frozenset(call_key(r.tool, r.args) for r in await self.inbox.rules())
+        approved = frozenset(r.tool for r in await self.inbox.rules())
         deps = TurnDeps(conversation_id, job.job_id, approved)
         cancel = CancellationToken()
         watcher = asyncio.create_task(self.watch_stop(job.job_id, cancel))
@@ -295,6 +295,7 @@ class Worker:
             await emit(
                 "approval",
                 item_id=item.id,
+                conversation_id=str(conversation_id),
                 tool=call.tool,
                 label=call.label,
                 toolCallId=call.tool_call_id,

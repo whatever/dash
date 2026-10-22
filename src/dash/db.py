@@ -103,7 +103,7 @@ class InboxItem(Base):
 
 
 class ToolRule(Base):
-    """A tool call, with exact arguments, that a person allowed to run without asking again."""
+    """A tool a person allowed to run without asking again. `args` stays empty."""
 
     __tablename__ = "tool_rules"
     __table_args__ = (UniqueConstraint("tool", "args"),)

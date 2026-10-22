@@ -97,15 +97,19 @@ class Queue:
         self, turn_job_id: str, conversation_id: str, item_ids: list[int]
     ) -> str | None:
         """Queue the one job that continues the given turn. Return None if it was already queued."""
-        if not await self.redis.set(resumed_key(turn_job_id), "1", nx=True, ex=SEEN_TTL_SECONDS):
-            return None
         job_id = uuid.uuid4().hex
+        if not await self.redis.set(resumed_key(turn_job_id), job_id, nx=True, ex=SEEN_TTL_SECONDS):
+            return None
         data = json.dumps({"item_ids": item_ids})
         await self.redis.xadd(
             JOBS,
             {"job_id": job_id, "kind": RESUME, "conversation_id": conversation_id, "data": data},
         )
         return job_id
+
+    async def resume_job(self, turn_job_id: str) -> str | None:
+        """Return the id of the job that continues the given turn, if one was queued."""
+        return cast("str | None", await self.redis.get(resumed_key(turn_job_id)))
 
     async def seen(self, item: Keyed) -> bool:
         return bool(await self.redis.exists(seen_key(item)))

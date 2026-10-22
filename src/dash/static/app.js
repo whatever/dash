@@ -277,31 +277,45 @@ function renderer(node) {
 
 // An approval the turn stopped at. Answering the last one of a turn resumes it in a new reply.
 function approvalCard(ev) {
+  const conversation = ev.conversation_id || state.conversation;
   const card = el("div", { className: "approval" }, el("div", { textContent: `Run ${ev.tool}: ${ev.label}?` }));
+  card.dataset.item = ev.item_id;
   const buttons = el("div", { className: "actions" });
   const decide = async (decision) => {
     buttons.replaceChildren(el("span", { textContent: "…" }));
     try {
-      const { job_id } = await answer(ev.item_id, decision);
-      buttons.replaceChildren(el("span", { textContent: decision === "deny" ? "Denied" : "Allowed" }));
-      if (job_id && state.conversation) {
-        const reply = bubble("assistant", "…");
-        setPendingJob(state.conversation, job_id);
-        await follow(job_id, reply, state.conversation);
-      }
+      const result = await answer(ev.item_id, decision);
+      if (result.job_id && !result.resolution) await resume(conversation, result.job_id);
     } catch (err) {
-      buttons.replaceChildren(el("span", { textContent: err.message.startsWith("409") ? "Already answered" : err.message }));
+      buttons.replaceChildren(el("span", { textContent: err.message }));
     }
   };
   for (const [label, decision] of [["Allow", "allow"], ["Always allow this", "allow_always"], ["Deny", "deny"]]) {
     buttons.append(el("button", { type: "button", textContent: label, onclick: () => decide(decision) }));
   }
   card.append(buttons);
+  api(`/api/inbox/${ev.item_id}`)
+    .then((item) => item.status !== "open" && showAnswer(ev.item_id, item.resolution, item.status))
+    .catch(() => {});
   return card;
+}
+
+function showAnswer(itemId, resolution, status = "resolved") {
+  const label = status !== "resolved" ? "Expired" : resolution?.decision === "deny" ? "Denied" : "Allowed";
+  document
+    .querySelectorAll(`.approval[data-item="${itemId}"] .actions`)
+    .forEach((buttons) => buttons.replaceChildren(el("span", { textContent: label })));
+}
+
+async function resume(conversation, jobId) {
+  if (conversation !== state.conversation) return;
+  setPendingJob(conversation, jobId);
+  await follow(jobId, bubble("assistant", "…"), conversation);
 }
 
 async function answer(itemId, decision) {
   const result = await api(`/api/inbox/${itemId}/resolve`, { method: "POST", body: { decision } });
+  showAnswer(itemId, result.resolution || { decision });
   pollInbox();
   return result;
 }
@@ -545,9 +559,9 @@ function inboxRow(item) {
   const act = (label, run) => el("button", { type: "button", textContent: label, onclick: async () => { await run(); loadInbox(); } });
   if (item.kind === "approval") {
     actions.append(
-      act("Allow", () => answer(item.id, "allow")),
-      act("Always", () => answer(item.id, "allow_always")),
-      act("Deny", () => answer(item.id, "deny")),
+      act("Allow", () => answerFromInbox(item, "allow")),
+      act("Always", () => answerFromInbox(item, "allow_always")),
+      act("Deny", () => answerFromInbox(item, "deny")),
     );
   } else {
     actions.append(act("Dismiss", () => api(`/api/inbox/${item.id}/dismiss`, { method: "POST" }).then(pollInbox)));
@@ -555,6 +569,11 @@ function inboxRow(item) {
   const li = el("li", {}, head, actions);
   li.dataset.kind = item.kind;
   return li;
+}
+
+async function answerFromInbox(item, decision) {
+  const result = await answer(item.id, decision);
+  if (result.job_id && !result.resolution && item.conversation_id) resume(item.conversation_id, result.job_id);
 }
 
 async function loadInbox() {

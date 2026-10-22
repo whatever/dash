@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 from dash.db import InboxItem
-from dash.inbox import ALLOW_ALWAYS
+from dash.inbox import ALLOW_ALWAYS, APPROVAL, OPEN, RESOLVED
 from dash.inbox.db import InboxStore
 from dash.queue import Queue
 
@@ -41,15 +41,36 @@ def create_router(*, store: InboxStore, queue: Queue) -> APIRouter:
     async def count() -> dict[str, int]:
         return {"open": await store.count_open()}
 
-    @router.post("/{item_id}/resolve", status_code=202)
-    async def resolve(item_id: int, body: Answer) -> dict[str, str]:
-        if await store.item(item_id) is None:
+    @router.get("/rules")
+    async def rules() -> list[dict[str, Any]]:
+        return [{"id": r.id, "tool": r.tool, "args": r.args} for r in await store.rules()]
+
+    @router.get("/{item_id}")
+    async def get_item(item_id: int) -> dict[str, Any]:
+        item = await store.item(item_id)
+        if item is None:
             raise HTTPException(404, "No such item.")
+        return item_json(item)
+
+    async def already_resolved(item: InboxItem | None, response: Response) -> dict[str, Any]:
+        if item is None or item.kind != APPROVAL or item.status != RESOLVED:
+            raise HTTPException(409, "That item is not an approval that can be answered.")
+        response.status_code = 200
+        job_id = await queue.resume_job(item.job_id)
+        return {"resolution": item.resolution, **({"job_id": job_id} if job_id else {})}
+
+    @router.post("/{item_id}/resolve", status_code=202)
+    async def resolve(item_id: int, body: Answer, response: Response) -> dict[str, Any]:
+        found = await store.item(item_id)
+        if found is None:
+            raise HTTPException(404, "No such item.")
+        if found.kind != APPROVAL or found.status != OPEN:
+            return await already_resolved(found, response)
         item = await store.resolve(item_id, body.decision)
         if item is None:
-            raise HTTPException(409, "That item is not an open approval.")
+            return await already_resolved(await store.item(item_id), response)
         if body.decision == ALLOW_ALWAYS:
-            await store.add_rule(str(item.data["tool"]), dict(item.data["args"]))
+            await store.add_rule(str(item.data["tool"]))
         if await store.open_in_turn(item.job_id) or item.conversation_id is None:
             return {}
         item_ids = [i.id for i in await store.turn_approvals(item.job_id)]
@@ -63,10 +84,6 @@ def create_router(*, store: InboxStore, queue: Queue) -> APIRouter:
         if not await store.dismiss(item_id):
             raise HTTPException(409, "Only an open message can be dismissed.")
         return Response(status_code=204)
-
-    @router.get("/rules")
-    async def rules() -> list[dict[str, Any]]:
-        return [{"id": r.id, "tool": r.tool, "args": r.args} for r in await store.rules()]
 
     @router.delete("/rules/{rule_id}", status_code=204)
     async def delete_rule(rule_id: int) -> Response:

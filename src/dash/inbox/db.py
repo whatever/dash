@@ -149,9 +149,9 @@ class InboxStore:
             result = await session.execute(statement)
             return int(cast("CursorResult[Any]", result).rowcount)
 
-    async def add_rule(self, tool: str, args: dict[str, Any]) -> None:
-        """Save a rule that lets the given call run without asking."""
-        statement = insert(ToolRule).values(tool=tool, args=args).on_conflict_do_nothing()
+    async def add_rule(self, tool: str) -> None:
+        """Save a rule that lets the given tool run without asking."""
+        statement = insert(ToolRule).values(tool=tool, args={}).on_conflict_do_nothing()
         async with self._session() as session, session.begin():
             await session.execute(statement)
 

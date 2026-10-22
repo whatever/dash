@@ -1,3 +1,5 @@
+import uuid
+
 from pydantic_ai import CancellationToken, UsageLimits
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.models.function import DeltaToolCall
@@ -5,6 +7,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.toolsets import FunctionToolset
 
 from dash.agent import build_model, history
+from dash.agent.deps import TurnDeps
 from dash.agent.engine import StreamedParts
 from dash.agent.events import Delta
 from tests.fakes import ScriptedModel
@@ -46,7 +49,7 @@ def test_history_round_trips_and_seeds_from_messages() -> None:
 
 
 async def test_each_turn_gets_a_fresh_budget() -> None:
-    tools = FunctionToolset[None]()
+    tools = FunctionToolset[TurnDeps]()
 
     @tools.tool_plain
     def terminal(command: str) -> str:
@@ -63,7 +66,12 @@ async def test_each_turn_gets_a_fresh_budget() -> None:
 
     for prompt in ("a", "b", "c"):
         turn = await engine.run(
-            conversation, prompt, instructions=None, on_delta=on_delta, cancel=CancellationToken()
+            conversation,
+            prompt,
+            deps=TurnDeps(uuid.uuid4(), "job"),
+            instructions=None,
+            on_delta=on_delta,
+            cancel=CancellationToken(),
         )
         conversation = turn.conversation
 

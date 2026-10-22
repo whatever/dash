@@ -6,7 +6,7 @@ from pydantic import BaseModel, TypeAdapter
 from pydantic_ai import RunContext, ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset
 
-from dash.agent.deps import TurnDeps, call_key
+from dash.agent.deps import TurnDeps
 
 Verdict = Literal["never", "ask", "auto"]
 NEVER: Verdict = "never"
@@ -36,7 +36,7 @@ class ToolPolicy(BaseModel):
     def offered(self, toolset: AbstractToolset[TurnDeps]) -> AbstractToolset[TurnDeps]:
         """Return the given toolset without `never` tools, and with `ask` tools needing approval.
 
-        A call a saved rule approved runs without asking.
+        A tool a saved rule approved runs without asking.
         """
 
         def shown(ctx: RunContext[TurnDeps], tool: ToolDefinition) -> bool:
@@ -45,6 +45,6 @@ class ToolPolicy(BaseModel):
         def asks(ctx: RunContext[TurnDeps], tool: ToolDefinition, args: dict[str, Any]) -> bool:
             if self.verdict(tool.name) != ASK:
                 return False
-            return call_key(tool.name, args) not in ctx.deps.approved
+            return tool.name not in ctx.deps.approved
 
         return toolset.filtered(shown).approval_required(asks)

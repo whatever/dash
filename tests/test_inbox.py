@@ -22,7 +22,7 @@ from dash.db import Store
 from dash.inbox.api import create_router
 from dash.inbox.db import InboxStore
 from dash.nango import Nango
-from dash.queue import RESUME, Job, Queue
+from dash.queue import JOBS, RESUME, Job, Queue
 from dash.web import create_app
 from dash.worker import Worker
 from tests.fakes import Chunk, FakeEmbedder, FakeExtractor, FakeInboxStore, FakeStore, ScriptedModel
@@ -129,6 +129,7 @@ async def test_an_ask_tool_waits_for_approval() -> None:
     assert got[-2] == {
         "kind": "approval",
         "item_id": item.id,
+        "conversation_id": str(r.conv_id),
         "tool": "run_command",
         "label": "git push",
         "toolCallId": "c1",
@@ -169,13 +170,19 @@ async def test_denying_tells_the_model() -> None:
     assert {"kind": "tool", "tool": "run_command", "toolCallId": "c1", "status": "denied"} in got
 
 
-async def test_allow_always_saves_a_rule_for_that_exact_call() -> None:
+async def test_allow_always_saves_a_rule_for_the_tool() -> None:
+    note = {
+        0: DeltaToolCall(
+            name="leave_message", json_args='{"title": "Hi", "body": "Yo"}', tool_call_id="c3"
+        )
+    }
     r = await rig(
         [call("git status")],
         ["Clean."],
-        [call("git status", "c2")],
-        ["Still clean."],
-        [call("git push", "c3")],
+        [call("git push", "c2")],
+        ["Pushed."],
+        [note],
+        policy=ToolPolicy.parse('{"run_command": "ask", "leave_message": "ask"}'),
     )
     await r.chat("t1")
     first = r.inbox.rows[0].id
@@ -184,16 +191,27 @@ async def test_allow_always_saves_a_rule_for_that_exact_call() -> None:
     ]
     await r.resume(job_id, [first])
 
-    await r.chat("t2", "again")
-    assert r.ran == ["git status", "git status"]
+    await r.chat("t2", "now push")
+    assert r.ran == ["git status", "git push"]
     assert len(r.inbox.rows) == 1
-
-    await r.chat("t3", "now push")
-    assert r.ran == ["git status", "git status"]
-    assert r.inbox.rows[-1].data["args"] == {"command": "git push"}
     assert r.client.get("/api/inbox/rules").json() == [
-        {"id": r.inbox.tool_rules[0].id, "tool": "run_command", "args": {"command": "git status"}}
+        {"id": r.inbox.tool_rules[0].id, "tool": "run_command", "args": {}}
     ]
+
+    await r.chat("t3", "leave a note")
+    assert [i.data["tool"] for i in r.inbox.rows] == ["run_command", "leave_message"]
+
+
+async def test_a_rule_applies_in_another_conversation() -> None:
+    r = await rig([call("git push")], ["Pushed."])
+    await r.inbox.add_rule("run_command")
+    other = await r.store.create_conversation()
+    await r.store.add_message(other.id, "user", "push it")
+
+    await r.worker.handle(Job("1-0", "t9", str(other.id)))
+
+    assert r.ran == ["git push"]
+    assert r.inbox.rows == []
 
 
 async def test_two_approvals_resume_only_after_both() -> None:
@@ -211,16 +229,38 @@ async def test_two_approvals_resume_only_after_both() -> None:
     assert sorted(tool_returns(r.model.requests[-1])) == ["The person denied this call.", "ran one"]
 
 
-async def test_answering_twice_is_a_conflict() -> None:
-    r = await rig([call("git push")])
+async def test_answering_twice_changes_nothing() -> None:
+    r = await rig([call("git push")], ["Pushed."])
     await r.chat("t1")
     item_id = r.inbox.rows[0].id
-    r.client.post(f"/api/inbox/{item_id}/resolve", json={"decision": "deny"})
+    first = r.client.post(f"/api/inbox/{item_id}/resolve", json={"decision": "deny"})
 
     again = r.client.post(f"/api/inbox/{item_id}/resolve", json={"decision": "allow"})
 
-    assert again.status_code == 409
+    assert first.status_code == 202
+    assert again.status_code == 200
+    assert again.json() == {
+        "resolution": {"decision": "deny", "reason": ""},
+        "job_id": first.json()["job_id"],
+    }
+    assert r.inbox.rows[0].resolution == {"decision": "deny", "reason": ""}
+    assert await r.queue.redis.xlen(JOBS) == 1
     assert r.client.post("/api/inbox/999/resolve", json={"decision": "allow"}).status_code == 404
+
+
+async def test_a_single_item_can_be_read() -> None:
+    r = await rig([call("git push")])
+    await r.chat("t1")
+    item_id = r.inbox.rows[0].id
+
+    body = r.client.get(f"/api/inbox/{item_id}").json()
+
+    assert (body["id"], body["status"], body["conversation_id"]) == (
+        item_id,
+        "open",
+        str(r.conv_id),
+    )
+    assert r.client.get("/api/inbox/999").status_code == 404
 
 
 async def test_a_new_message_supersedes_open_approvals() -> None:
@@ -306,7 +346,7 @@ async def test_inbox_lists_and_dismisses() -> None:
 
 async def test_rules_can_be_deleted() -> None:
     r = await rig()
-    await r.inbox.add_rule("run_command", {"command": "ls"})
+    await r.inbox.add_rule("run_command")
     rule_id = r.inbox.tool_rules[0].id
 
     assert r.client.delete(f"/api/inbox/rules/{rule_id}").status_code == 204

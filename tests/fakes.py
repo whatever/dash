@@ -241,9 +241,9 @@ class FakeInboxStore:
             self._close(item, EXPIRED, None)
         return len(old)
 
-    async def add_rule(self, tool: str, args: dict[str, Any]) -> None:
-        if not any(r.tool == tool and r.args == args for r in self.tool_rules):
-            self.tool_rules.append(ToolRule(id=next(self._ids), tool=tool, args=args))
+    async def add_rule(self, tool: str) -> None:
+        if not any(r.tool == tool for r in self.tool_rules):
+            self.tool_rules.append(ToolRule(id=next(self._ids), tool=tool, args={}))
 
     async def rules(self) -> list[ToolRule]:
         return list(self.tool_rules)
