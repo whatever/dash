@@ -304,3 +304,140 @@ class Store:
         async with self._session() as session, session.begin():
             result = await session.execute(delete(Memory).where(Memory.id == memory_id))
             return bool(cast("CursorResult[Any]", result).rowcount)
+
+
+# MCP Server Management Tables
+
+
+class MCPServer(Base):
+    """An approved MCP server that the agent can use."""
+
+    __tablename__ = "mcp_servers"
+    __table_args__ = (UniqueConstraint("name", "url"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, default="")
+    approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    approval_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MCPToolApprovalRequest(Base):
+    """A request to approve an MCP server, shown in the inbox."""
+
+    __tablename__ = "mcp_tool_approval_requests"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    mcp_server_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("mcp_servers.id", ondelete="CASCADE"), index=True
+    )
+    source: Mapped[str] = mapped_column(Text)
+    request_context: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(Text, default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    async def mcp_servers(self, approved_only: bool = False) -> Sequence[MCPServer]:
+        """Return all MCP servers, optionally filtered to approved ones."""
+        async with self._session() as session:
+            query = select(MCPServer)
+            if approved_only:
+                query = query.where(MCPServer.approved == True)
+            rows = await session.scalars(query.order_by(MCPServer.created_at.desc()))
+            return rows.all()
+
+    async def get_mcp_server(self, server_id: int) -> MCPServer | None:
+        """Return an MCP server by ID."""
+        async with self._session() as session:
+            return await session.get(MCPServer, server_id)
+
+    async def find_mcp_server(self, name: str, url: str) -> MCPServer | None:
+        """Find an MCP server by name and URL."""
+        async with self._session() as session:
+            row = await session.scalar(
+                select(MCPServer).where(MCPServer.name == name, MCPServer.url == url)
+            )
+            return row
+
+    async def create_or_get_mcp_server(
+        self, name: str, url: str, description: str = ""
+    ) -> MCPServer:
+        """Create or return existing MCP server."""
+        existing = await self.find_mcp_server(name, url)
+        if existing:
+            return existing
+        server = MCPServer(name=name, url=url, description=description)
+        async with self._session() as session, session.begin():
+            session.add(server)
+        return server
+
+    async def request_mcp_approval(
+        self,
+        server_id: int,
+        source: str = "agent",
+        context: dict[str, Any] | None = None,
+    ) -> MCPToolApprovalRequest:
+        """Create an approval request for an MCP server."""
+        request = MCPToolApprovalRequest(
+            mcp_server_id=server_id,
+            source=source,
+            request_context=context or {},
+        )
+        async with self._session() as session, session.begin():
+            session.add(request)
+            server = await session.get(MCPServer, server_id)
+            if server is not None:
+                server.approval_requested_at = func.now()
+        return request
+
+    async def pending_approval_requests(self) -> Sequence[MCPToolApprovalRequest]:
+        """Return all pending MCP approval requests."""
+        async with self._session() as session:
+            rows = await session.scalars(
+                select(MCPToolApprovalRequest)
+                .where(MCPToolApprovalRequest.status == "pending")
+                .order_by(MCPToolApprovalRequest.created_at.desc())
+            )
+            return rows.all()
+
+    async def approve_mcp_server(self, server_id: int) -> MCPServer | None:
+        """Approve an MCP server and mark requests as approved."""
+        async with self._session() as session, session.begin():
+            server = await session.get(MCPServer, server_id)
+            if server is not None:
+                server.approved = True
+                server.approved_at = func.now()
+                # Mark associated requests as approved
+                requests = await session.scalars(
+                    select(MCPToolApprovalRequest).where(
+                        MCPToolApprovalRequest.mcp_server_id == server_id,
+                        MCPToolApprovalRequest.status == "pending",
+                    )
+                )
+                for req in requests.all():
+                    req.status = "approved"
+                    req.resolved_at = func.now()
+        return await self.get_mcp_server(server_id)
+
+    async def reject_mcp_server(self, server_id: int) -> MCPServer | None:
+        """Reject an MCP server and mark requests as rejected."""
+        async with self._session() as session, session.begin():
+            server = await session.get(MCPServer, server_id)
+            if server is not None:
+                await session.execute(
+                    delete(MCPServer).where(MCPServer.id == server_id)
+                )
+                # Mark associated requests as rejected
+                requests = await session.scalars(
+                    select(MCPToolApprovalRequest).where(
+                        MCPToolApprovalRequest.mcp_server_id == server_id,
+                        MCPToolApprovalRequest.status == "pending",
+                    )
+                )
+                for req in requests.all():
+                    req.status = "rejected"
+                    req.resolved_at = func.now()
+        return None
