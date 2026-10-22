@@ -63,12 +63,17 @@ The system SHALL accept `POST /api/jobs/{job_id}/stop` for a job id and return 2
 
 ### Requirement: Every turn has a budget
 
-The worker SHALL end a turn that would make more model requests than `AGENT_REQUEST_LIMIT` (default 30), or more tool calls than `AGENT_TOOL_CALL_LIMIT` (default 50). The job ends with an `error` event beginning `agent:` that names the limit.
+The worker SHALL give each turn its own budget. A turn SHALL end when it would make more model requests than `AGENT_REQUEST_LIMIT` (default 60), or more tool calls than `AGENT_TOOL_CALL_LIMIT` (default 100). Requests and tool calls made in earlier turns of the conversation SHALL NOT count against it. The job ends with an `error` event beginning `agent:` that says the turn hit the limit and names it.
 
 #### Scenario: A runaway tool loop
 
 - **WHEN** the agent keeps calling tools past `AGENT_TOOL_CALL_LIMIT`
 - **THEN** the job ends with an `error` event naming the tool call limit, and the turn history is unchanged
+
+#### Scenario: A long conversation
+
+- **WHEN** a conversation has used more than `AGENT_REQUEST_LIMIT` model requests across many turns, each within the limit
+- **THEN** the next turn runs normally
 
 ### Requirement: A failed job ends with an error event
 

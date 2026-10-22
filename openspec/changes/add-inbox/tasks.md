@@ -19,6 +19,7 @@
 
 - [ ] 4.1 Add `GET /api/inbox`, `GET /api/inbox/count`, `POST /api/inbox/{id}/resolve`, `POST /api/inbox/{id}/dismiss`, `GET /api/inbox/rules` and `DELETE /api/inbox/rules/{id}`. Verify: API tests for every scenario in the `inbox` spec, including 404 and 409.
 - [ ] 4.2 Add an Inbox tab with an unread badge, an approval card in the chat (allow, always, deny), and messages that link back to their conversation. Verify: on the compose stack, an `ask` call shows the card, allowing it resumes the reply, and the badge count follows the inbox.
+- [ ] 4.2a Make resolve idempotent, add `GET /api/inbox/{id}`, key rules on the tool name, put `conversation_id` in the `approval` event, and have the chat card read its item's state and act on its own conversation. Verify: tests for the double resolve, concurrent resolves, a rule that holds in another conversation, the event's `conversation_id`; on the compose stack, answering in the inbox updates the open chat.
 - [ ] 4.3 Set the chart's default `AGENT_TOOL_POLICY` to `{"run_command": "ask"}`, and document how to turn it off. Verify: `helm template` shows the value, and the README explains it.
 
 ## 5. Checks

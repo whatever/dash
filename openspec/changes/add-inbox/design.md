@@ -29,8 +29,10 @@ The October ACP spike built approvals the other way: the agent blocked for at mo
 **Resume once every approval from a turn has a decision.** The library continues a turn with results for all of its waiting calls. So the `resume` job is queued when the last open approval from that turn is answered, and the answer that completes the set returns its `job_id`. The resume job builds `ToolApproved` or `ToolDenied` for each call and streams a new assistant message with the usual events.
 - Alternative: resume after each answer, with partial results. That turns one turn into several model calls that each see a half-answered state.
 
-**Key rules on the tool and its exact arguments.** "Allow always" stores the tool name and the arguments as JSON. The approval check runs before every `ask` call, and skips asking when a rule's tool and arguments match exactly.
-- Alternative: match on the tool name alone. The spike shows this turns one approval of `git status` into a standing approval of every command.
+**Key rules on the tool name.** "Allow always" stores the tool name. The approval check runs before every `ask` call, reads the rules at the start of each turn, and skips asking when a rule names the tool. Rules are global, so one answer holds in every conversation.
+- Alternative: match the tool and its exact arguments. The first version did, and it asked again for every command that differed, so approvals piled up. It was the cause of repeated prompts across chats.
+- Alternative: scope rules to a conversation. Safer, but the same tool is approved again in each new chat.
+- The spike showed that a rule by tool kind becomes a blanket allow. For `run_command` that is a standing approval of every shell command. The rules list and `DELETE /api/inbox/rules/{id}` are the way back, and a person can keep `run_command` on `ask` and answer with plain `allow`.
 
 **A new message denies what is still open.** If the person writes instead of answering, the open approvals from that conversation are resolved as `denied` with reason `superseded`. The new turn sends their denials and the new message in one run, which the library supports. The model hears both, and the conversation never has calls left unanswered.
 
@@ -45,8 +47,8 @@ The October ACP spike built approvals the other way: the agent blocked for at mo
 ## Risks / Trade-offs
 
 - **A resumed turn runs on whatever model is configured then.** The model may have changed since the approval was raised. That is acceptable, because the history and the pending calls are stored in a model-neutral form.
-- **Rules on exact arguments rarely match again** for commands that differ each time, like a commit message. That is the point: a person asked for that call, not that kind of call. A pattern rule can come later if this proves too strict.
-- **Two tabs answering the same item.** The second answer gets 409, because only an open item can be resolved.
+- **A rule on the tool name is broad.** "Always allow" on `run_command` approves every later command. A pattern rule or a command allowlist can narrow it if this proves too loose.
+- **Two surfaces answering the same item.** The inbox and the chat both show an approval. The second answer is a no-op that returns the first one's result, and the chat shows the card as answered.
 
 ## Open Questions
 

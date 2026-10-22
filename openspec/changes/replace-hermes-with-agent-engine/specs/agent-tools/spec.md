@@ -14,6 +14,25 @@ The agent SHALL have a `run_command` tool. It runs a shell command over SSH in t
 - **WHEN** the agent runs a command that exits with status 2
 - **THEN** the tool returns exit code 2 and the command's output, and the turn continues
 
+### Requirement: Sandbox commands can use GitHub
+
+Each command SHALL run with `GITHUB_TOKEN` and `GH_TOKEN` set from the sandbox's GitHub token file when it exists, whether or not the sandbox's login shell reads its rc files. `gh` and `git` over HTTPS SHALL then reach the private repositories the GitHub App can see. The tool SHALL mask any GitHub token in the output before the model sees it.
+
+#### Scenario: A private repository
+
+- **WHEN** the agent runs `gh repo view <private repository the app is installed on>`
+- **THEN** the tool returns the repository, and the worker holds no GitHub token
+
+#### Scenario: A command prints the token
+
+- **WHEN** the agent runs `env` and the output contains the GitHub token
+- **THEN** the tool returns the output with the token replaced by `***`
+
+#### Scenario: No token file
+
+- **WHEN** the sandbox has no GitHub token file
+- **THEN** commands still run, unauthenticated
+
 ### Requirement: Sandbox commands are bounded
 
 A sandbox command that runs longer than 90 seconds SHALL be stopped, and the tool SHALL report the timeout. Output past 20,000 characters SHALL be cut and marked as cut.

@@ -36,12 +36,7 @@ A turn with calls waiting for approval SHALL end with one `approval` event per c
 
 ### Requirement: Approvals can be answered
 
-The system SHALL accept `POST /api/inbox/{id}/resolve` with a `decision` of `allow`, `allow_always` or `deny`, and SHALL mark the approval `resolved` with that decision. It SHALL return 404 for an unknown item, and 409 for an item that is not an open approval.
-
-#### Scenario: Answered twice
-
-- **WHEN** a client resolves an approval that is already resolved
-- **THEN** the response is 409 and nothing is queued
+The system SHALL accept `POST /api/inbox/{id}/resolve` with a `decision` of `allow`, `allow_always` or `deny`, and SHALL mark the approval `resolved` with that decision. It SHALL return 404 for an unknown item, and 409 for an item that is not an approval or that was dismissed or expired. The system SHALL return one item at `GET /api/inbox/{id}`, or 404.
 
 #### Scenario: Unknown item
 
@@ -67,19 +62,38 @@ When no approval from the same turn is left open, the system SHALL queue a `resu
 - **WHEN** a turn opened two approvals and only one is resolved
 - **THEN** no `resume` job is queued until the second is resolved
 
-### Requirement: Allow always saves a rule for that exact call
+### Requirement: Answering an approval twice changes nothing
 
-Resolving an approval with `allow_always` SHALL save a rule for that tool with those exact arguments. A later call to the same tool with identical arguments SHALL run without asking. A call with any other arguments SHALL still ask. The system SHALL list saved rules at `GET /api/inbox/rules` and delete one with `DELETE /api/inbox/rules/{id}`.
+Resolving an approval that is already resolved SHALL return 200 with its existing resolution and the `job_id` of its resume job, if there is one. It SHALL NOT change the decision or queue a second job.
 
-#### Scenario: The same command again
+#### Scenario: Answered twice
 
-- **WHEN** `git status` was allowed always and the model later calls `run_command` with `git status`
+- **WHEN** a client resolves an approval that is already resolved
+- **THEN** the response is 200, the first decision stands, and no second resume job is queued
+
+#### Scenario: Two clients answer at once
+
+- **WHEN** two clients resolve the last open approval of a turn at the same time
+- **THEN** one resume job is queued, and the response that lost reports the first decision
+
+### Requirement: Allow always saves a rule for that tool
+
+Resolving an approval with `allow_always` SHALL save a rule for that tool, whatever its arguments. A later call to the same tool, in any conversation, SHALL run without asking. A call to another tool SHALL still ask. The worker SHALL read the saved rules at the start of each turn. The system SHALL list saved rules at `GET /api/inbox/rules` and delete one with `DELETE /api/inbox/rules/{id}`.
+
+#### Scenario: A different command, same tool
+
+- **WHEN** `run_command` was allowed always and the model later calls it with `git push`
 - **THEN** the command runs without an approval
 
-#### Scenario: A different command
+#### Scenario: Another tool
 
-- **WHEN** the model calls `run_command` with `git push`
+- **WHEN** `run_command` was allowed always and the model calls `fetch_url`, which is set to `ask`
 - **THEN** it still needs approval
+
+#### Scenario: Another conversation
+
+- **WHEN** a rule is saved in one conversation and the model calls the tool in another
+- **THEN** the call runs without an approval
 
 ### Requirement: A new message supersedes open approvals
 

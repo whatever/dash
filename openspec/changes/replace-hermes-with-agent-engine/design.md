@@ -52,7 +52,7 @@
 **Name the model with `AGENT_MODEL`.** It takes a Pydantic AI model string. The default `bedrock:global.anthropic.claude-opus-5-5` matches the model the chart's hermes used. When `AGENT_BASE_URL` is set, the name goes to that OpenAI-compatible API (LiteLLM, OpenRouter) through `LiteLLMProvider`, with `AGENT_API_KEY`. Compose keeps its LiteLLM proxy, so local development needs no AWS account.
 - Alternative: keep the `HERMES_MODEL` alias names. They describe a router that no longer exists.
 
-**Run sandbox commands with the system `ssh` binary.** One `ssh` per command, as `agent@SANDBOX_HOST`, running `cd /config/workspace && <command>`. It uses the mounted key, with `BatchMode=yes`, a 90-second timeout and output capped at 20,000 characters. This is what hermes's SSH backend did, so the sandbox image, its keys, its token sidecars and its NetworkPolicy stay as Matt built them. The only change is that the policy admits `dash-worker`.
+**Run sandbox commands with the system `ssh` binary.** One `ssh` per command, as `agent@SANDBOX_HOST`, running `cd /config/workspace && <command>`, after exporting `GITHUB_TOKEN` and `GH_TOKEN` from `/run/secrets/github/token`. A non-interactive `ssh host cmd` does not read the shell's rc files, so the token cannot depend on them. It uses the mounted key, with `BatchMode=yes`, a 90-second timeout and output capped at 20,000 characters. This is what hermes's SSH backend did, so the sandbox image, its keys, its token sidecars and its NetworkPolicy stay as Matt built them. The only change is that the policy admits `dash-worker`.
 - Alternative: a small HTTP exec server inside the sandbox pod. It needs no SSH key, but it is a new component to secure.
 - Alternative: an SSH client library such as asyncssh. That adds a dependency with a copyleft licence to a public-domain project.
 
@@ -70,11 +70,14 @@
 **Stop a turn through Redis.** `POST /api/jobs/{job_id}/stop` sets a key. The worker checks for it while streaming and cancels the run's token.
 - Alternative: pub/sub. It adds a subscription per turn for one bit of state.
 
-**Budget every turn.** `AGENT_REQUEST_LIMIT` (default 30) caps model requests and `AGENT_TOOL_CALL_LIMIT` (default 50) caps tool calls. A turn that would exceed either ends with an `error` event.
+**Budget every turn.** `AGENT_REQUEST_LIMIT` (default 60) caps model requests and `AGENT_TOOL_CALL_LIMIT` (default 100) caps tool calls. The library carries run usage inside the stored conversation, so without a reset the budget would count every turn the conversation ever had. Each turn starts from zero usage. A turn that would exceed either limit ends with an `error` event and, like any failed turn, leaves the stored history unchanged. The library's usage error carries no partial messages, so the work done before the limit is lost to the model; commands it ran in the sandbox still happened.
+
+**Leave the other Pydantic AI defaults.** Tool and output retries (1), `end_strategy`, the model HTTP timeout (600 s), MCP init (5 s) and read (300 s) timeouts, and unset token limits were checked and are acceptable. `ModelSettings` carries only `thinking`.
 
 ## Risks / Trade-offs
 
 - **Hermes's extras are lost.** Its `SKILL.md` skills, memory files, session search, todo list and delegation go with it. The tools above cover what dash's chart enabled, apart from skills and todo. Any skill a user relied on has to come back as instructions or a tool.
+- **Anything in the sandbox can print the GitHub token.** Output is masked, but a command can encode it. The token is a short-lived installation token limited to the App's permissions.
 - **The worker holds the sandbox SSH key.** A compromised worker can run commands in the sandbox. The hermes pod could do that today, and the worker never gets the tokens themselves.
 - **History grows with every tool result.** Long conversations will reach the model's context limit. Mitigation: a history processor that trims old tool results. If that isn't enough, a later change can summarise old turns.
 - **Duplicated text** is the classic streaming mapping bug. The event contract tests pin it down, both for text that arrives inside a part's start event and for a part that is replaced.

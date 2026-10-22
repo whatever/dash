@@ -14,6 +14,11 @@ The worker SHALL append `delta` (reply text), `reasoning` (the model's thinking,
 - **WHEN** at least one memory was recalled for the job
 - **THEN** a `memories` event listing their text comes before the first `delta`
 
+#### Scenario: An approval event names its conversation
+
+- **WHEN** a call waits for approval
+- **THEN** the `approval` event carries the item id and the `conversation_id` it belongs to
+
 #### Scenario: A reply waits for approval
 
 - **WHEN** the agent calls a tool set to `ask`
@@ -51,3 +56,22 @@ Before handling a job, the worker SHALL record it with its job id, its kind (`ch
 
 - **WHEN** the worker picks up a resume job
 - **THEN** `/api/live` lists an entry of kind `resume` with the conversation id and the answered item ids
+
+### Requirement: An approval card shows the state of its inbox item
+
+A chat SHALL show each approval card in the state of its inbox item, whichever surface answered it. A card for an item that is not open SHALL show the decision and have no buttons. When an approval is answered from the Inbox tab, the open chat SHALL show the decision and follow the resume job. A card SHALL act only on the conversation it belongs to, even if the user has opened another chat since.
+
+#### Scenario: Answered in the inbox
+
+- **WHEN** an approval is allowed in the inbox while its chat is open
+- **THEN** the card shows it as allowed and the resumed reply appears in that chat
+
+#### Scenario: Chat reloaded after the answer
+
+- **WHEN** a chat is opened with a stored approval card whose item is resolved
+- **THEN** the card shows the decision and no buttons
+
+#### Scenario: Switching chats after clicking
+
+- **WHEN** the user allows a card and opens another chat before the reply starts
+- **THEN** the resumed reply is shown in the chat the card belongs to, not the other one
