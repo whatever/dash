@@ -111,9 +111,17 @@ def worker() -> None:
 
 
 async def _worker() -> None:
-    from pydantic_ai import UsageLimits
+    from pathlib import Path
 
-    from dash.agent import Engine, build_agent, build_model
+    import httpx
+    from pydantic_ai import UsageLimits
+    from pydantic_ai.toolsets import AbstractToolset
+
+    from dash.agent import Engine, build_agent, build_model, mcp
+    from dash.agent.policy import ToolPolicy
+    from dash.agent.sandbox import Sandbox, private_key_copy
+    from dash.agent.tools import memory_tools, sandbox_tools, web_tools
+    from dash.agent.web import Fetcher
     from dash.db import Store
     from dash.memory import Bedrock
     from dash.queue import Queue
@@ -127,15 +135,35 @@ async def _worker() -> None:
 
     bedrock = Bedrock(settings.embed_model, settings.extract_model)
     model = build_model(settings.agent_model, settings.agent_base_url, settings.agent_api_key)
-    engine = Engine(
-        build_agent(model, thinking=settings.agent_thinking),
-        UsageLimits(
+    policy = ToolPolicy.parse(settings.agent_tool_policy)
+    servers = [mcp.ServerTools.connect(s) for s in mcp.parse(settings.agent_mcp_servers)]
+    queue = Queue.from_url(settings.redis_url)
+    async with (
+        Store.connect(settings.database_url) as store,
+        httpx.AsyncClient(timeout=20, headers={"User-Agent": "dash"}) as http,
+    ):
+        toolsets: list[AbstractToolset[None]] = [
+            web_tools(Fetcher(http)),
+            memory_tools(store, bedrock),
+        ]
+        if settings.sandbox_host:
+            key = private_key_copy(Path(settings.sandbox_key_path))
+            sandbox = Sandbox(
+                settings.sandbox_host, settings.sandbox_port, settings.sandbox_user, key
+            )
+            toolsets.append(sandbox_tools(sandbox))
+        agent = build_agent(
+            model,
+            toolsets=toolsets,
+            policy=policy,
+            web_search=settings.agent_web_search,
+            thinking=settings.agent_thinking,
+        )
+        limits = UsageLimits(
             request_limit=settings.agent_request_limit,
             tool_calls_limit=settings.agent_tool_call_limit,
-        ),
-    )
-    queue = Queue.from_url(settings.redis_url)
-    async with Store.connect(settings.database_url) as store:
+        )
+        engine = Engine(agent, limits, servers=servers, policy=policy)
         try:
             await Worker(
                 store=store,

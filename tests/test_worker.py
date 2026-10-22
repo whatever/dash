@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import fakeredis
 import pytest
-from pydantic_ai import UsageLimits
+from pydantic_ai import ModelRetry, UsageLimits
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -321,3 +321,24 @@ async def test_every_job_is_recorded_on_the_timeline() -> None:
         ("job", "chat", {"conversation_id": str(conv_id)}),
     ]
     assert rows[0][:2] == ("j3", "chat")
+
+
+async def test_a_failing_tool_is_reported_and_the_turn_continues() -> None:
+    tools = FunctionToolset[None]()
+
+    @tools.tool_plain
+    def broken(command: str) -> str:
+        """Fail."""
+        raise ModelRetry(f"cannot run {command}")
+
+    model = ScriptedModel(
+        [{0: DeltaToolCall(name="broken", json_args='{"command": "x"}', tool_call_id="b1")}],
+        ["That failed."],
+    )
+    worker, _, queue, _, job = await setup(model, [], tools=tools)
+
+    await worker.handle(job)
+
+    got = await events(queue)
+    assert {"kind": "tool", "tool": "broken", "toolCallId": "b1", "status": "failed"} in got
+    assert got[-1]["kind"] == "done"

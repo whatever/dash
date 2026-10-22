@@ -19,8 +19,10 @@ from pydantic_ai import (
     TextPartDelta,
     ThinkingPart,
     ThinkingPartDelta,
+    ToolReturnPart,
     UsageLimits,
 )
+from pydantic_ai.capabilities import AgentCapability, WebSearch
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.litellm import LiteLLMProvider
@@ -28,6 +30,8 @@ from pydantic_ai.toolsets import AbstractToolset
 from pydantic_ai.usage import RunUsage
 
 from dash.agent.events import Delta, tool_label
+from dash.agent.mcp import ServerTools
+from dash.agent.policy import ToolPolicy
 from dash.config import Thinking
 
 INSTRUCTIONS = (
@@ -38,6 +42,12 @@ INSTRUCTIONS = (
 )
 
 OnDelta = Callable[[Delta], Awaitable[None]]
+TOOL_STATUS = {
+    "success": "completed",
+    "failed": "failed",
+    "denied": "denied",
+    "interrupted": "interrupted",
+}
 
 
 @dataclass(frozen=True)
@@ -60,15 +70,26 @@ def build_agent(
     model: Model | str,
     *,
     toolsets: Sequence[AbstractToolset[None]] = (),
+    policy: ToolPolicy | None = None,
+    web_search: bool = False,
     thinking: Thinking | None = None,
 ) -> Agent[None, str]:
-    """Return the agent for the given model, tools and thinking level."""
+    """Return the agent for the given model, tools and thinking level.
+
+    The policy hides the tools it does not let run. Web search uses the model's own search
+    where it has one, and DuckDuckGo otherwise.
+    """
+    policy = policy or ToolPolicy()
     settings = ModelSettings(thinking=thinking) if thinking else None
+    capabilities: list[AgentCapability[None]] = (
+        [WebSearch(local="duckduckgo")] if web_search else []
+    )
     return Agent(
         model,
         deps_type=type(None),
         instructions=INSTRUCTIONS,
-        toolsets=list(toolsets),
+        toolsets=[policy.offered(t) for t in toolsets],
+        capabilities=capabilities,
         model_settings=settings,
     )
 
@@ -92,11 +113,31 @@ class StreamedParts:
 
 
 class Engine:
-    """Runs agent turns with a per-turn budget."""
+    """Runs agent turns with a per-turn budget and the MCP servers that answer."""
 
-    def __init__(self, agent: Agent[None, str], limits: UsageLimits) -> None:
+    def __init__(
+        self,
+        agent: Agent[None, str],
+        limits: UsageLimits,
+        *,
+        servers: Sequence[ServerTools] = (),
+        policy: ToolPolicy | None = None,
+    ) -> None:
         self.agent = agent
         self.limits = limits
+        self.servers = list(servers)
+        self.policy = policy or ToolPolicy()
+
+    async def available(self, on_delta: OnDelta) -> list[AbstractToolset[None]]:
+        """Return the toolsets of the servers that answer, reporting the ones that don't."""
+        toolsets: list[AbstractToolset[None]] = []
+        for server in self.servers:
+            if await server.reachable():
+                toolsets.append(self.policy.offered(server.toolset))
+            else:
+                message = f"The {server.name} tools are unavailable: the server did not answer."
+                await on_delta(Delta("status", data={"message": message}))
+        return toolsets
 
     async def run(
         self,
@@ -110,6 +151,7 @@ class Engine:
         """Run one turn, stream it to `on_delta`, and return how it ended."""
         parts = StreamedParts()
         result: Conversation | None = None
+        toolsets = await self.available(on_delta)
         try:
             async with self.agent.run_stream_events(
                 prompt,
@@ -117,6 +159,7 @@ class Engine:
                 instructions=instructions,
                 usage_limits=self.limits,
                 cancellation_token=cancel,
+                toolsets=toolsets,
             ) as events:
                 async for event in events:
                     if isinstance(event, AgentRunResultEvent):
@@ -161,7 +204,8 @@ def _deltas(event: AgentStreamEvent, parts: StreamedParts) -> list[Delta]:
             return [Delta("tool", data=data)]
         case FunctionToolResultEvent(part=done):
             parts.seen.clear()
-            data = {"tool": done.tool_name, "toolCallId": done.tool_call_id, "status": "completed"}
+            status = TOOL_STATUS[done.outcome] if isinstance(done, ToolReturnPart) else "failed"
+            data = {"tool": done.tool_name, "toolCallId": done.tool_call_id, "status": status}
             return [Delta("tool", data=data)]
         case _:
             return []
