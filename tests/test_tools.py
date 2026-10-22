@@ -75,7 +75,17 @@ def test_ssh_command_line() -> None:
     assert "UserKnownHostsFile=/keys/known_hosts" in argv
     assert argv[-2] == "agent@dash-sandbox"
     assert argv[-1] == (
-        "cd /config/workspace && timeout -s KILL 90 sh -c 'git status; echo '\"'\"'done'\"'\"''"
+        sandbox_module.EXPORT_GITHUB_TOKEN
+        + "cd /config/workspace && timeout -s KILL 90 sh -c 'git status; echo '\"'\"'done'\"'\"''"
+    )
+
+
+def test_the_github_token_is_exported_from_its_file() -> None:
+    remote = SANDBOX.argv("gh auth status")[-1]
+
+    assert remote.startswith(
+        '[ -r /run/secrets/github/token ] && export GITHUB_TOKEN="$(cat /run/secrets/github/token)"'
+        ' GH_TOKEN="$(cat /run/secrets/github/token)"; cd /config/workspace'
     )
 
 
@@ -333,3 +343,18 @@ def test_mcp_servers_parse() -> None:
     assert parse('[{"name": "serena", "url": "http://s:9121/mcp", "exclude": ["x"]}]') == [
         McpServer(name="serena", url="http://s:9121/mcp", exclude=["x"])
     ]
+
+
+async def test_a_printed_github_token_is_masked(monkeypatch: pytest.MonkeyPatch) -> None:
+    token = "ghs_" + "a1B2c3D4e5F6g7H8i9J0k1L2"
+    pat = "github_pat_" + "x" * 30
+    spawn(
+        monkeypatch,
+        FakeProcess(f"GITHUB_TOKEN={token}\nremote https://x:{pat}@github.com\n".encode(), 0),
+    )
+
+    result = await SANDBOX.run("env")
+
+    assert token not in result.output
+    assert pat not in result.output
+    assert result.output == "GITHUB_TOKEN=***\nremote https://x:***@github.com\n"

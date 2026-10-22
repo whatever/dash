@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import re
 import shlex
 import tempfile
 from dataclasses import dataclass
@@ -13,6 +14,13 @@ WORKSPACE = "/config/workspace"
 TIMEOUT_SECONDS = 90
 OUTPUT_CHARS = 20_000
 CONNECT_TIMEOUT_SECONDS = 10
+GITHUB_TOKEN_PATH = "/run/secrets/github/token"  # noqa: S105 — a file path, not a secret
+GITHUB_TOKEN = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})")
+MASK = "***"
+EXPORT_GITHUB_TOKEN = (
+    f"[ -r {GITHUB_TOKEN_PATH} ] && "
+    f'export GITHUB_TOKEN="$(cat {GITHUB_TOKEN_PATH})" GH_TOKEN="$(cat {GITHUB_TOKEN_PATH})"; '
+)
 
 
 class CommandResult(BaseModel):
@@ -43,7 +51,10 @@ class Sandbox:
 
     def argv(self, command: str) -> list[str]:
         """Return the ssh command line that runs the given command in the workspace."""
-        remote = f"cd {WORKSPACE} && timeout -s KILL {TIMEOUT_SECONDS} sh -c {shlex.quote(command)}"
+        remote = (
+            f"{EXPORT_GITHUB_TOKEN}cd {WORKSPACE} && "
+            f"timeout -s KILL {TIMEOUT_SECONDS} sh -c {shlex.quote(command)}"
+        )
         return [
             "ssh",
             "-i",
@@ -81,7 +92,7 @@ class Sandbox:
                 process.kill()
             await process.wait()
             return CommandResult(exit_code=None, output="", timed_out=True)
-        text = out.decode(errors="replace")
+        text = GITHUB_TOKEN.sub(MASK, out.decode(errors="replace"))
         code = process.returncode
         return CommandResult(
             exit_code=code,
