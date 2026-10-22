@@ -35,7 +35,9 @@ def test_index_and_health(client: TestClient) -> None:
     assert client.get("/static/app.js").status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/memories", "/apps", "/data", "/live", f"/c/{uuid.uuid4()}"])
+@pytest.mark.parametrize(
+    "path", ["/memories", "/apps", "/data", "/live", "/inbox", f"/c/{uuid.uuid4()}"]
+)
 def test_client_routes_serve_the_index(client: TestClient, path: str) -> None:
     assert 'src="/static/app.js"' in client.get(path).text
 

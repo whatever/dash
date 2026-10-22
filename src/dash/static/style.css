@@ -52,6 +52,7 @@ main { flex: 1; display: flex; min-width: 0; }
 .msg.assistant :is(th, td) { border: 1px solid var(--line); padding: 4px 8px; }
 .msg.assistant img { max-width: 100%; }
 .msg.error { border-color: #dc2626; color: #dc2626; }
+.msg.assistant:empty { display: none; }
 li.error { color: #dc2626; }
 .trace { align-self: flex-start; max-width: 760px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .trace:empty { display: none; }
@@ -60,6 +61,9 @@ li.error { color: #dc2626; }
 .tool { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
 .tool[data-status="running"]::after { content: " …"; }
 .tool[data-status="failed"] { color: #dc2626; }
+.tool[data-status="waiting"]::after { content: " (waiting for approval)"; }
+.tool[data-status="denied"] { text-decoration: line-through; }
+.tool[data-status="denied"]::after { content: " (not run)"; }
 .status { font-style: italic; }
 .recalled { font-size: 12px; color: var(--muted); margin-top: 6px; }
 #composer, form.inline { display: flex; gap: 8px; }
@@ -117,3 +121,7 @@ p.error:empty { display: none; }
   form.inline { flex-wrap: wrap; }
   form.inline input { flex-basis: 100%; }
 }
+.badge { display: inline-block; min-width: 1.4em; padding: 0 5px; margin-left: 4px; border-radius: 999px; background: var(--accent); color: var(--panel); font-size: 11px; text-align: center; line-height: 1.6; }
+.badge[hidden] { display: none; }
+.approval { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; color: var(--text); }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

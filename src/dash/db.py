@@ -80,6 +80,40 @@ class TurnHistory(Base):
     )
 
 
+class InboxItem(Base):
+    """Something the agent left for the person: an approval to answer, or a message."""
+
+    __tablename__ = "inbox_items"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    kind: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="open", index=True)
+    title: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text, default="")
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    job_id: Mapped[str] = mapped_column(Text, default="", index=True)
+    resolution: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ToolRule(Base):
+    """A tool a person allowed to run without asking again. `args` stays empty."""
+
+    __tablename__ = "tool_rules"
+    __table_args__ = (UniqueConstraint("tool", "args"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tool: Mapped[str] = mapped_column(Text)
+    args: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Memory(Base):
     __tablename__ = "memories"
 

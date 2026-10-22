@@ -1,6 +1,7 @@
 """Consumes `dash:jobs`.
 
 `chat` jobs recall memories, run an agent turn, stream it and store new memories.
+`resume` jobs continue a turn once a person has answered every approval it waited on.
 `update` jobs (from `dash scrape`) store a real-world item as a memory.
 """
 
@@ -8,16 +9,22 @@ import asyncio
 import contextlib
 import logging
 import socket
+import time
 import uuid
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from pydantic_ai import CancellationToken, Conversation
+from pydantic_ai import CancellationToken, Conversation, DeferredToolResults
 from redis.exceptions import RedisError
 
 from dash.agent import Delta, Turn, history
+from dash.agent.answers import answers
+from dash.agent.deps import TurnDeps
 from dash.agent.engine import OnDelta
 from dash.db import Store
+from dash.inbox import APPROVAL, APPROVAL_HOURS
+from dash.inbox.db import InboxStore
 from dash.memory import (
     DUPLICATE_DISTANCE,
     RELEVANT_DISTANCE,
@@ -25,7 +32,7 @@ from dash.memory import (
     Extractor,
     system_prompt,
 )
-from dash.queue import UPDATE, Job, Queue
+from dash.queue import RESUME, UPDATE, Job, Queue
 from dash.sources.common import Item
 
 log = logging.getLogger(__name__)
@@ -34,6 +41,7 @@ log = logging.getLogger(__name__)
 FLUSH_CHARS = 48
 RETRY_SECONDS = 2
 STOP_POLL_SECONDS = 0.5
+SWEEP_SECONDS = 60
 
 
 def record(log: list[dict[str, Any]], kind: str, data: Mapping[str, Any]) -> None:
@@ -48,11 +56,13 @@ class AgentRunner(Protocol):
     async def run(
         self,
         conversation: Conversation,
-        prompt: str,
+        prompt: str | None,
         *,
+        deps: TurnDeps,
         instructions: str | None,
         on_delta: OnDelta,
         cancel: CancellationToken,
+        answers: DeferredToolResults | None = None,
     ) -> Turn: ...
 
 
@@ -61,6 +71,7 @@ class Worker:
         self,
         *,
         store: Store,
+        inbox: InboxStore,
         queue: Queue,
         agent: AgentRunner,
         embedder: Embedder,
@@ -68,6 +79,7 @@ class Worker:
         top_k: int,
     ) -> None:
         self.store = store
+        self.inbox = inbox
         self.queue = queue
         self.agent = agent
         self.embedder = embedder
@@ -100,12 +112,18 @@ class Worker:
 
     async def handle(self, job: Job) -> None:
         # Every inbound job lands on the LIVE timeline before it runs.
-        data = {"conversation_id": job.conversation_id} if job.conversation_id else job.data
+        data = (
+            {"conversation_id": job.conversation_id, **job.data}
+            if job.conversation_id
+            else job.data
+        )
         await self.store.add_timeline(job.job_id, job.kind, data)
         if job.kind == UPDATE:
             await self.handle_update(job)
-            return
-        await self.handle_chat(job)
+        elif job.kind == RESUME:
+            await self.handle_resume(job)
+        else:
+            await self.handle_chat(job)
 
     async def handle_update(self, job: Job) -> None:
         item = Item.from_dict(job.data)
@@ -129,6 +147,20 @@ class Worker:
         stored = await self.store.turn_history(conversation_id)
         return history.load(stored) if stored else history.seed(earlier)
 
+    async def answers(
+        self, conversation_id: uuid.UUID, conversation: Conversation, *, supersede: bool
+    ) -> DeferredToolResults | None:
+        """Return the decisions on the calls the conversation waits on, if it waits on any.
+
+        With `supersede`, approvals still open are denied first, because a new message came.
+        """
+        pending = conversation.deferred_tool_requests
+        if pending is None or not pending.approvals:
+            return None
+        if supersede:
+            await self.inbox.supersede(conversation_id)
+        return answers(pending, await self.inbox.conversation_approvals(conversation_id))
+
     async def watch_stop(self, job_id: str, cancel: CancellationToken) -> None:
         """Cancel the turn once someone asks to stop the given job."""
         while True:
@@ -147,6 +179,45 @@ class Worker:
             await self.queue.emit(job.job_id, "error", message="No user message to answer.")
             return
         user_text = messages[-1].content
+        memories = await self.recall(user_text)
+        conversation = await self.conversation(
+            conversation_id, [(m.role, m.content) for m in messages[:-1]]
+        )
+        decided = await self.answers(conversation_id, conversation, supersede=True)
+        ended = await self.run_turn(
+            job, conversation_id, conversation, user_text, memories=memories, decided=decided
+        )
+        if ended is None or ended[1].stopped or ended[1].waiting:
+            return
+        stored = await self.remember(user_text, ended[0])
+        if stored:
+            log.info("stored %d new memories", stored)
+
+    async def handle_resume(self, job: Job) -> None:
+        conversation_id = uuid.UUID(job.conversation_id)
+        stored = await self.store.turn_history(conversation_id)
+        conversation = history.load(stored) if stored else None
+        decided = (
+            await self.answers(conversation_id, conversation, supersede=False)
+            if conversation
+            else None
+        )
+        if conversation is None or decided is None:
+            await self.queue.emit(job.job_id, "error", message="Nothing to resume.")
+            return
+        await self.run_turn(job, conversation_id, conversation, None, decided=decided)
+
+    async def run_turn(
+        self,
+        job: Job,
+        conversation_id: uuid.UUID,
+        conversation: Conversation,
+        prompt: str | None,
+        *,
+        memories: list[str] | None = None,
+        decided: DeferredToolResults | None = None,
+    ) -> tuple[str, Turn] | None:
+        """Run, stream and store a turn. Return its reply and how it ended, or None if it failed."""
         # Everything the UI is shown, in order, so the reply can be rebuilt after a reload.
         trail: list[dict[str, Any]] = []
 
@@ -154,13 +225,8 @@ class Worker:
             await self.queue.emit(job.job_id, kind, **data)
             record(trail, kind, data)
 
-        memories = await self.recall(user_text)
         if memories:
             await emit("memories", items=memories)
-
-        conversation = await self.conversation(
-            conversation_id, [(m.role, m.content) for m in messages[:-1]]
-        )
 
         reply: list[str] = []
         buffers = {"text": "", "reasoning": ""}
@@ -185,20 +251,24 @@ class Worker:
                 await flush("text")
                 await emit(delta.kind, **delta.data)
 
+        approved = frozenset(r.tool for r in await self.inbox.rules())
+        deps = TurnDeps(conversation_id, job.job_id, approved)
         cancel = CancellationToken()
         watcher = asyncio.create_task(self.watch_stop(job.job_id, cancel))
         try:
             turn = await self.agent.run(
                 conversation,
-                user_text,
-                instructions=system_prompt(memories),
+                prompt,
+                deps=deps,
+                instructions=system_prompt(memories or []),
                 on_delta=on_delta,
                 cancel=cancel,
+                answers=decided,
             )
         except Exception as ex:
             log.exception("agent turn failed")
             await self.queue.emit(job.job_id, "error", message=f"agent: {ex}")
-            return
+            return None
         finally:
             watcher.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -206,23 +276,61 @@ class Worker:
         await flush("reasoning")
         await flush("text")
 
+        awaiting: list[int] = []
+        for call in turn.waiting:
+            item = await self.inbox.add(
+                kind=APPROVAL,
+                title=f"Run {call.tool}?",
+                body=call.label,
+                data={
+                    "tool": call.tool,
+                    "args": call.args,
+                    "tool_call_id": call.tool_call_id,
+                    "label": call.label,
+                },
+                conversation_id=conversation_id,
+                job_id=job.job_id,
+            )
+            awaiting.append(item.id)
+            await emit(
+                "approval",
+                item_id=item.id,
+                conversation_id=str(conversation_id),
+                tool=call.tool,
+                label=call.label,
+                toolCallId=call.tool_call_id,
+            )
+
         text = "".join(reply)
         message = await self.store.add_message(conversation_id, "assistant", text, trail)
         await self.store.save_turn_history(conversation_id, history.dump(turn.conversation))
         done: dict[str, Any] = {"message_id": message.id}
         if turn.stopped:
             done["stopped"] = True
+        if awaiting:
+            done["awaiting"] = awaiting
         await self.queue.emit(job.job_id, "done", **done)
-        if turn.stopped:
+        return text, turn
+
+    async def sweep(self) -> None:
+        """Expire approvals nobody answered in time."""
+        before = datetime.now(UTC) - timedelta(hours=APPROVAL_HOURS)
+        try:
+            expired = await self.inbox.expire(before)
+        except Exception:
+            log.exception("approval expiry failed")
             return
-        stored = await self.remember(user_text, text)
-        if stored:
-            log.info("stored %d new memories", stored)
+        if expired:
+            log.info("expired %d approvals", expired)
 
     async def run(self, stop: asyncio.Event | None = None) -> None:
         await self.queue.ensure_group()
         log.info("worker %s waiting for jobs", self.name)
+        swept = 0.0
         while not (stop and stop.is_set()):
+            if time.monotonic() - swept >= SWEEP_SECONDS:
+                await self.sweep()
+                swept = time.monotonic()
             try:
                 job = await self.queue.claim(self.name)
             except RedisError:

@@ -19,14 +19,16 @@ from pydantic_ai.toolsets import FunctionToolset
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from dash.agent import history
+from dash.agent.deps import TurnDeps
 from dash.db import Store
+from dash.inbox.db import InboxStore
 from dash.queue import Job, Queue
 from dash.worker import Worker
-from tests.fakes import Chunk, FakeEmbedder, FakeExtractor, FakeStore, ScriptedModel
+from tests.fakes import Chunk, FakeEmbedder, FakeExtractor, FakeInboxStore, FakeStore, ScriptedModel
 
 
-def terminal_tools() -> FunctionToolset[None]:
-    tools = FunctionToolset[None]()
+def terminal_tools() -> FunctionToolset[TurnDeps]:
+    tools = FunctionToolset[TurnDeps]()
 
     @tools.tool_plain
     def terminal(command: str) -> str:
@@ -40,13 +42,14 @@ async def setup(
     model: ScriptedModel,
     facts: list[str],
     *,
-    tools: FunctionToolset[None] | None = None,
+    tools: FunctionToolset[TurnDeps] | None = None,
     limits: UsageLimits | None = None,
 ) -> tuple[Worker, FakeStore, Queue, uuid.UUID, Job]:
     store = FakeStore()
     queue = Queue(fakeredis.FakeAsyncRedis(decode_responses=True))
     worker = Worker(
         store=cast("Store", store),
+        inbox=cast("InboxStore", FakeInboxStore()),
         queue=queue,
         agent=model.engine([tools] if tools else [], limits),
         embedder=FakeEmbedder(),
@@ -324,7 +327,7 @@ async def test_every_job_is_recorded_on_the_timeline() -> None:
 
 
 async def test_a_failing_tool_is_reported_and_the_turn_continues() -> None:
-    tools = FunctionToolset[None]()
+    tools = FunctionToolset[TurnDeps]()
 
     @tools.tool_plain
     def broken(command: str) -> str:

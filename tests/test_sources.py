@@ -8,6 +8,7 @@ from click.testing import CliRunner
 
 import dash
 from dash.db import Store
+from dash.inbox.db import InboxStore
 from dash.queue import JOBS, UPDATE, Job, Queue
 from dash.sources.common import Item, Source, plain
 from dash.sources.inputs.bushwick import BushwickDaily
@@ -15,7 +16,7 @@ from dash.sources.inputs.hackernews import HackerNews
 from dash.sources.inputs.web import Web, parse_page
 from dash.sources.scrape import scrape
 from dash.worker import Worker
-from tests.fakes import FakeEmbedder, FakeExtractor, FakeStore, ScriptedModel
+from tests.fakes import FakeEmbedder, FakeExtractor, FakeInboxStore, FakeStore, ScriptedModel
 
 PAGE = "<html><title>Status</title><script>x()</script><body>All &amp; good</body></html>"
 
@@ -113,6 +114,7 @@ async def test_worker_stores_update_once(queue: Queue) -> None:
     store = FakeStore()
     worker = Worker(
         store=cast("Store", store),
+        inbox=cast("InboxStore", FakeInboxStore()),
         queue=queue,
         agent=ScriptedModel().engine(),
         embedder=FakeEmbedder(),

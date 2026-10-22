@@ -9,6 +9,8 @@ from pydantic_ai import RunContext, ToolDefinition
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.toolsets import AbstractToolset
 
+from dash.agent.deps import TurnDeps
+
 log = logging.getLogger(__name__)
 
 PROBE_SECONDS = 5
@@ -35,14 +37,16 @@ class ServerTools:
     """A server's tools, named `<server>_<tool>`, with the excluded ones left out."""
 
     name: str
-    toolset: AbstractToolset[None]
+    toolset: AbstractToolset[TurnDeps]
 
     @classmethod
-    def build(cls, name: str, tools: AbstractToolset[None], exclude: list[str]) -> "ServerTools":
+    def build(
+        cls, name: str, tools: AbstractToolset[TurnDeps], exclude: list[str]
+    ) -> "ServerTools":
         """Return the given server tools, prefixed with its name and without the excluded ones."""
         excluded = set(exclude)
 
-        def kept(ctx: RunContext[None], tool: ToolDefinition) -> bool:
+        def kept(ctx: RunContext[TurnDeps], tool: ToolDefinition) -> bool:
             return tool.name not in excluded
 
         return cls(name, tools.filtered(kept).prefixed(name))
