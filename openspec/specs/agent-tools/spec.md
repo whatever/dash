@@ -115,3 +115,22 @@ The worker SHALL read `AGENT_TOOL_POLICY`, a JSON map from a tool name to `never
 
 - **WHEN** `AGENT_TOOL_POLICY` is `{"serena_*": "never"}`
 - **THEN** no tool from the `serena` server is offered
+
+### Requirement: Sandbox commands can use GitHub
+
+Each command SHALL run with `GITHUB_TOKEN` and `GH_TOKEN` set from the sandbox's GitHub token file when it exists, whether or not the sandbox's login shell reads its rc files. `gh` and `git` over HTTPS SHALL then reach the private repositories the GitHub App can see. The tool SHALL mask any GitHub token in the output before the model sees it.
+
+#### Scenario: A private repository
+
+- **WHEN** the agent runs `gh repo view <private repository the app is installed on>`
+- **THEN** the tool returns the repository, and the worker holds no GitHub token
+
+#### Scenario: A command prints the token
+
+- **WHEN** the agent runs `env` and the output contains the GitHub token
+- **THEN** the tool returns the output with the token replaced by `***`
+
+#### Scenario: No token file
+
+- **WHEN** the sandbox has no GitHub token file
+- **THEN** commands still run, unauthenticated

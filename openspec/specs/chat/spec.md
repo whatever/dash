@@ -81,6 +81,11 @@ The worker SHALL append `delta` (reply text), `reasoning` (the model's thinking,
 - **WHEN** at least one memory was recalled for the job
 - **THEN** a `memories` event listing their text comes before the first `delta`
 
+#### Scenario: An approval event names its conversation
+
+- **WHEN** a call waits for approval
+- **THEN** the `approval` event carries the item id and the `conversation_id` it belongs to
+
 #### Scenario: A reply waits for approval
 
 - **WHEN** the agent calls a tool set to `ask`
@@ -186,12 +191,17 @@ The system SHALL accept `POST /api/jobs/{job_id}/stop` for a job id and return 2
 
 ### Requirement: Every turn has a budget
 
-The worker SHALL end a turn that would make more model requests than `AGENT_REQUEST_LIMIT` (default 30), or more tool calls than `AGENT_TOOL_CALL_LIMIT` (default 50). The job ends with an `error` event beginning `agent:` that names the limit.
+The worker SHALL give each turn its own budget. A turn SHALL end when it would make more model requests than `AGENT_REQUEST_LIMIT` (default 60), or more tool calls than `AGENT_TOOL_CALL_LIMIT` (default 100). Requests and tool calls made in earlier turns of the conversation SHALL NOT count against it. The job ends with an `error` event beginning `agent:` that says the turn hit the limit and names it.
 
 #### Scenario: A runaway tool loop
 
 - **WHEN** the agent keeps calling tools past `AGENT_TOOL_CALL_LIMIT`
 - **THEN** the job ends with an `error` event naming the tool call limit, and the turn history is unchanged
+
+#### Scenario: A long conversation
+
+- **WHEN** a conversation has used more than `AGENT_REQUEST_LIMIT` model requests across many turns, each within the limit
+- **THEN** the next turn runs normally
 
 ### Requirement: A failed job ends with an error event
 
@@ -239,3 +249,22 @@ The worker SHALL store, with each assistant message, the events shown while it s
 
 - **WHEN** a client reloads a conversation whose reply called a tool
 - **THEN** the stored message's events include that tool's `running` and `completed` events, in the order they streamed
+
+### Requirement: An approval card shows the state of its inbox item
+
+A chat SHALL show each approval card in the state of its inbox item, whichever surface answered it. A card for an item that is not open SHALL show the decision and have no buttons. When an approval is answered from the Inbox tab, the open chat SHALL show the decision and follow the resume job. A card SHALL act only on the conversation it belongs to, even if the user has opened another chat since.
+
+#### Scenario: Answered in the inbox
+
+- **WHEN** an approval is allowed in the inbox while its chat is open
+- **THEN** the card shows it as allowed and the resumed reply appears in that chat
+
+#### Scenario: Chat reloaded after the answer
+
+- **WHEN** a chat is opened with a stored approval card whose item is resolved
+- **THEN** the card shows the decision and no buttons
+
+#### Scenario: Switching chats after clicking
+
+- **WHEN** the user allows a card and opens another chat before the reply starts
+- **THEN** the resumed reply is shown in the chat the card belongs to, not the other one
