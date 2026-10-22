@@ -53,8 +53,8 @@ class Settings:
             agent_base_url=_env("AGENT_BASE_URL", "").rstrip("/"),
             agent_api_key=_env("AGENT_API_KEY", ""),
             agent_thinking=_thinking(_env("AGENT_THINKING", "")),
-            agent_request_limit=int(_env("AGENT_REQUEST_LIMIT", "30")),
-            agent_tool_call_limit=int(_env("AGENT_TOOL_CALL_LIMIT", "50")),
+            agent_request_limit=int(_env("AGENT_REQUEST_LIMIT", "60")),
+            agent_tool_call_limit=int(_env("AGENT_TOOL_CALL_LIMIT", "100")),
             nango_url=_env("NANGO_URL", "http://localhost:3003").rstrip("/"),
             # Browser-facing addresses. Empty means "same as NANGO_URL".
             nango_public_url=_env("NANGO_PUBLIC_URL", "").rstrip("/"),

@@ -53,7 +53,7 @@ def test_settings_read_the_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.agent_model == "bedrock:global.anthropic.claude-opus-5-5"
     assert settings.agent_base_url == "http://litellm:4000/v1"
     assert settings.agent_thinking == "low"
-    assert (settings.agent_request_limit, settings.agent_tool_call_limit) == (30, 50)
+    assert (settings.agent_request_limit, settings.agent_tool_call_limit) == (60, 100)
 
 
 def test_settings_reject_an_unknown_thinking_level(monkeypatch: pytest.MonkeyPatch) -> None:

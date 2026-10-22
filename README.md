@@ -68,7 +68,7 @@ dash stores the private key and secrets as plain JSONB. Protect the database.
 | `AGENT_MODEL` | `bedrock:global.anthropic.claude-opus-5-5`. A Pydantic AI model string, or a model name at `AGENT_BASE_URL`. |
 | `AGENT_BASE_URL`, `AGENT_API_KEY` | Empty. An OpenAI-compatible `/v1` URL (LiteLLM, OpenRouter) and its key. |
 | `AGENT_THINKING` | Empty (the model's default). `minimal`, `low`, `medium`, `high` or `xhigh`. |
-| `AGENT_REQUEST_LIMIT`, `AGENT_TOOL_CALL_LIMIT` | `30`, `50`. A turn that would go past either ends with an error. |
+| `AGENT_REQUEST_LIMIT`, `AGENT_TOOL_CALL_LIMIT` | `60`, `100`. Each turn gets its own budget, and a turn that would go past either ends with an error. |
 | `NANGO_URL`, `NANGO_SECRET_KEY` | `http://localhost:3003`, empty (disabled) |
 | `NANGO_PUBLIC_URL`, `NANGO_CONNECT_URL` | Browser-facing Nango API and Connect UI addresses |
 | `EMBED_MODEL`, `EXTRACT_MODEL`, `MEMORY_TOP_K` | Titan v2, Haiku 4.5, `8` |

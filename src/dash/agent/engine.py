@@ -1,7 +1,7 @@
 """Runs one turn of the agent and streams it as deltas."""
 
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from pydantic_ai import (
     Agent,
@@ -25,6 +25,7 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.litellm import LiteLLMProvider
 from pydantic_ai.toolsets import AbstractToolset
+from pydantic_ai.usage import RunUsage
 
 from dash.agent.events import Delta, tool_label
 from dash.config import Thinking
@@ -112,7 +113,7 @@ class Engine:
         try:
             async with self.agent.run_stream_events(
                 prompt,
-                conversation=conversation,
+                conversation=replace(conversation, usage=RunUsage()),
                 instructions=instructions,
                 usage_limits=self.limits,
                 cancellation_token=cancel,
