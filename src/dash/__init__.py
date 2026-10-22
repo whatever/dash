@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 @click.group()
 def main() -> None:
-    """dash: always-on assistant in front of hermes-agent."""
+    """dash: always-on assistant with its own agent, memories and connected apps."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
@@ -106,13 +106,15 @@ async def _scrape(
 
 @main.command()
 def worker() -> None:
-    """Consume the job queue and answer through hermes."""
+    """Consume the job queue and answer with the agent."""
     asyncio.run(_worker())
 
 
 async def _worker() -> None:
+    from pydantic_ai import UsageLimits
+
+    from dash.agent import Engine, build_agent, build_model
     from dash.db import Store
-    from dash.hermes import Hermes
     from dash.memory import Bedrock
     from dash.queue import Queue
     from dash.worker import Worker
@@ -124,18 +126,24 @@ async def _worker() -> None:
         loop.add_signal_handler(sig, stop.set)
 
     bedrock = Bedrock(settings.embed_model, settings.extract_model)
-    hermes = Hermes(settings.hermes_base_url, settings.hermes_api_key, settings.hermes_model)
+    model = build_model(settings.agent_model, settings.agent_base_url, settings.agent_api_key)
+    engine = Engine(
+        build_agent(model, thinking=settings.agent_thinking),
+        UsageLimits(
+            request_limit=settings.agent_request_limit,
+            tool_calls_limit=settings.agent_tool_call_limit,
+        ),
+    )
     queue = Queue.from_url(settings.redis_url)
     async with Store.connect(settings.database_url) as store:
         try:
             await Worker(
                 store=store,
                 queue=queue,
-                chat=hermes,
+                agent=engine,
                 embedder=bedrock,
                 extractor=bedrock,
                 top_k=settings.memory_top_k,
             ).run(stop)
         finally:
-            await hermes.close()
             await queue.close()

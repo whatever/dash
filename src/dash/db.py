@@ -21,7 +21,7 @@ from sqlalchemy import (
     func,
     select,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID, insert
 from sqlalchemy.engine import CursorResult, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -64,6 +64,20 @@ class Message(Base):
     # The ordered stream behind an assistant reply: text, reasoning, tool, status, memories.
     events: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TurnHistory(Base):
+    """The agent's stored turns for one conversation: messages, usage and pending tool calls."""
+
+    __tablename__ = "turn_history"
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), primary_key=True
+    )
+    state: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Memory(Base):
@@ -228,6 +242,22 @@ class Store:
                 if role == "user" and conversation.title == "New conversation":
                     conversation.title = content.strip().splitlines()[0][:80] or conversation.title
         return message
+
+    async def turn_history(self, conversation_id: uuid.UUID) -> dict[str, Any] | None:
+        """Return the stored turn history of the given conversation, if it has one."""
+        async with self._session() as session:
+            row = await session.get(TurnHistory, conversation_id)
+            return row.state if row else None
+
+    async def save_turn_history(self, conversation_id: uuid.UUID, state: dict[str, Any]) -> None:
+        """Store the given turn history for the conversation, replacing any earlier one."""
+        statement = insert(TurnHistory).values(conversation_id=conversation_id, state=state)
+        statement = statement.on_conflict_do_update(
+            index_elements=[TurnHistory.conversation_id],
+            set_={"state": statement.excluded.state, "updated_at": func.now()},
+        )
+        async with self._session() as session, session.begin():
+            await session.execute(statement)
 
     async def memories(self, limit: int = 200) -> Sequence[Memory]:
         async with self._session() as session:

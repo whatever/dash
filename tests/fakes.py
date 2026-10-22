@@ -4,11 +4,20 @@ from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic_ai import UsageLimits, models
+from pydantic_ai.messages import ModelMessage
+from pydantic_ai.models.function import AgentInfo, DeltaThinkingCalls, DeltaToolCalls, FunctionModel
+from pydantic_ai.toolsets import AbstractToolset
+
+from dash.agent import Engine, build_agent
 from dash.db import Authorization, Conversation, DataSource, Memory, Message, TimelineEntry
 from dash.github.api import Installation, NewApp
 from dash.github.db import APP, INSTALLATION, PROVIDER
-from dash.hermes import Delta
 from dash.sources.common import Source
+
+models.ALLOW_MODEL_REQUESTS = False
+
+Chunk = str | DeltaToolCalls | DeltaThinkingCalls
 
 CLIENT_SECRET = "fake-client-secret"  # noqa: S105
 
@@ -21,6 +30,7 @@ class FakeStore:
         self.msgs: list[Message] = []
         self.mems: list[Memory] = []
         self.timeline_rows: list[TimelineEntry] = []
+        self.histories: dict[uuid.UUID, dict[str, Any]] = {}
         self._ids = itertools.count(1)
 
     async def conversations(self, limit: int = 50) -> list[Conversation]:
@@ -39,6 +49,7 @@ class FakeStore:
         if self.convs.pop(conversation_id, None) is None:
             return False
         self.msgs = [m for m in self.msgs if m.conversation_id != conversation_id]
+        self.histories.pop(conversation_id, None)
         return True
 
     async def messages(self, conversation_id: uuid.UUID) -> list[Message]:
@@ -60,6 +71,12 @@ class FakeStore:
         )
         self.msgs.append(m)
         return m
+
+    async def turn_history(self, conversation_id: uuid.UUID) -> dict[str, Any] | None:
+        return self.histories.get(conversation_id)
+
+    async def save_turn_history(self, conversation_id: uuid.UUID, state: dict[str, Any]) -> None:
+        self.histories[conversation_id] = state
 
     async def memories(self, limit: int = 200) -> list[Memory]:
         return self.mems[:limit]
@@ -123,22 +140,32 @@ class FakeExtractor:
         return self.facts
 
 
-class FakeChat:
-    def __init__(self, chunks: list[str | Delta], fail: bool = False) -> None:
-        self.chunks = chunks
-        self.fail = fail
-        self.seen: list[dict[str, str | None]] = []
+class ScriptedModel:
+    """A model that streams one scripted response per request and records what it was sent."""
 
-    async def stream(
-        self, conversation: str, text: str, instructions: str | None = None
-    ) -> AsyncIterator[Delta]:
-        self.seen.append(
-            {"conversation": conversation, "input": text, "instructions": instructions}
-        )
-        for chunk in self.chunks:
-            yield Delta("text", chunk) if isinstance(chunk, str) else chunk
+    def __init__(self, *responses: list[Chunk], fail: bool = False) -> None:
+        self.responses = list(responses)
+        self.fail = fail
+        self.requests: list[list[ModelMessage]] = []
+        self.infos: list[AgentInfo] = []
+
+    async def stream(self, messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[Chunk]:
+        """Yield the next scripted response, then fail if told to."""
+        self.requests.append(list(messages))
+        self.infos.append(info)
+        for chunk in self.responses.pop(0) if self.responses else ["ok"]:
+            yield chunk
         if self.fail:
             raise RuntimeError("upstream down")
+
+    def engine(
+        self,
+        toolsets: Sequence[AbstractToolset[None]] = (),
+        limits: UsageLimits | None = None,
+    ) -> Engine:
+        """Return an engine that answers with this model."""
+        agent = build_agent(FunctionModel(stream_function=self.stream), toolsets=toolsets)
+        return Engine(agent, limits or UsageLimits())
 
 
 class FakeGitHubStore:

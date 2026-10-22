@@ -121,6 +121,13 @@ def create_app(
             stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}
         )
 
+    @app.post("/api/jobs/{job_id}/stop", status_code=202)
+    async def stop(job_id: str) -> dict[str, str]:
+        if not job_id.isalnum():
+            raise HTTPException(400, "Bad job id.")
+        await queue.request_stop(job_id)
+        return {"job_id": job_id}
+
     @app.get("/api/queue")
     async def queue_status() -> dict[str, int]:
         return await queue.status()

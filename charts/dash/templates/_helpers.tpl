@@ -32,9 +32,11 @@ env:
     valueFrom:
       secretKeyRef: { name: {{ .Values.redis.existingSecret }}, key: REDIS_URL }
   {{- end }}
-  - name: HERMES_API_KEY
+  {{- if .Values.agent.baseUrl }}
+  - name: AGENT_API_KEY
     valueFrom:
-      secretKeyRef: { name: dash-hermes, key: API_SERVER_KEY }
+      secretKeyRef: { name: dash-agent, key: AGENT_API_KEY, optional: true }
+  {{- end }}
   - name: NANGO_SECRET_KEY
     valueFrom:
       secretKeyRef: { name: dash, key: NANGO_SECRET_KEY, optional: true }
@@ -56,8 +58,4 @@ securityContext:
 
 {{- define "dash.nangoConnectUrl" -}}
 {{ ternary (include "dash.url" (list . .Values.nango.connectHost)) .Values.nango.connectUrl .Values.nango.deploy }}
-{{- end }}
-
-{{- define "dash.hermesUrl" -}}
-{{ ternary "http://dash-agent:8642/v1" .Values.hermes.url .Values.hermes.deploy }}
 {{- end }}

@@ -1,12 +1,12 @@
 import io
-import uuid
 
 import pytest
 from alembic import command
 from alembic.script import ScriptDirectory
 
+from dash.agent import tool_label
+from dash.config import Settings
 from dash.db import alembic_config, async_url
-from dash.hermes import Delta, HermesError, conversation_key, parse_sse_frame
 from dash.memory import parse_facts, system_prompt
 
 URL = "postgresql://dash:p%40ss@db:5432/dash"
@@ -31,42 +31,37 @@ def test_offline_upgrade_creates_vector_tables() -> None:
     assert "embedding VECTOR(1024) NOT NULL" in sql
     assert "USING hnsw (embedding vector_cosine_ops)" in sql
     assert "REFERENCES conversations (id) ON DELETE CASCADE" in sql
+    assert "CREATE TABLE turn_history" in sql
 
 
-def test_parse_sse_frame() -> None:
-    text = '{"type":"response.output_text.delta","delta":"hi"}'
-    assert parse_sse_frame("response.output_text.delta", text) == [Delta("text", "hi")]
-    assert parse_sse_frame(None, text) == [Delta("text", "hi")]
-    assert parse_sse_frame(None, "[DONE]") == []
-    thinking = '{"type":"response.reasoning_summary_text.delta","delta":"hmm"}'
-    assert parse_sse_frame(None, thinking) == [Delta("reasoning", "hmm")]
-    call = (
-        '{"type":"response.output_item.added","item":{"type":"function_call",'
-        '"name":"terminal","call_id":"c1","arguments":"{\\"command\\": \\"ls -la\\"}"}}'
-    )
-    assert parse_sse_frame(None, call) == [
-        Delta(
-            "tool",
-            data={"tool": "terminal", "label": "ls -la", "toolCallId": "c1", "status": "running"},
-        )
-    ]
-    done = call.replace("added", "done")
-    assert parse_sse_frame(None, done) == [
-        Delta("tool", data={"tool": "terminal", "toolCallId": "c1", "status": "completed"})
-    ]
-    output = '{"type":"response.output_item.added","item":{"type":"function_call_output"}}'
-    assert parse_sse_frame(None, output) == []
-    assert parse_sse_frame("hermes.status", '{"message":"retrying"}') == [
-        Delta("status", data={"message": "retrying"})
-    ]
-    assert parse_sse_frame("response.created", '{"type":"response.created"}') == []
-    with pytest.raises(HermesError, match="boom"):
-        parse_sse_frame(None, '{"type":"response.failed","response":{"error":{"message":"boom"}}}')
+def test_tool_label() -> None:
+    assert tool_label('{"command": "ls   -la"}') == "ls -la"
+    assert tool_label({"command": "git status"}) == "git status"
+    assert tool_label({"a": 1, "b": 2}) == '{"a": 1, "b": 2}'
+    assert tool_label("not json") == "not json"
+    assert tool_label(None) == "{}"
+    assert tool_label({"text": "x" * 200}) == "x" * 119 + "\u2026"
 
 
-def test_conversation_key_is_stable() -> None:
-    cid = uuid.uuid4()
-    assert conversation_key(cid) == conversation_key(str(cid)) == f"dash:{cid}"
+def test_settings_read_the_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", URL)
+    monkeypatch.setenv("AGENT_BASE_URL", "http://litellm:4000/v1/")
+    monkeypatch.setenv("AGENT_THINKING", "low")
+
+    settings = Settings.from_env()
+
+    assert settings.agent_model == "bedrock:global.anthropic.claude-opus-5-5"
+    assert settings.agent_base_url == "http://litellm:4000/v1"
+    assert settings.agent_thinking == "low"
+    assert (settings.agent_request_limit, settings.agent_tool_call_limit) == (60, 100)
+
+
+def test_settings_reject_an_unknown_thinking_level(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", URL)
+    monkeypatch.setenv("AGENT_THINKING", "lots")
+
+    with pytest.raises(RuntimeError, match="AGENT_THINKING"):
+        Settings.from_env()
 
 
 def test_parse_facts() -> None:
