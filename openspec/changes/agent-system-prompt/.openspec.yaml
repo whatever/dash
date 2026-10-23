@@ -1,0 +1,16 @@
+title: Agent System Prompt (dash.md) Configuration
+summary: User-configurable system instructions for the agent with developer base instructions and optional self-improvement workflow
+status: draft
+owner: dash-agent
+
+proposal: proposal.md
+design: design.md
+tasks: tasks.md
+specs:
+  - specs/system-prompt-storage.md
+  - specs/system-prompt-loading.md
+  - specs/system-prompt-modification.md
+
+stack_on:
+  pr: 39
+  title: "feat: inbox system"
