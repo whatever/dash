@@ -8,6 +8,7 @@ from dash.db import Authorization, Conversation, DataSource, Memory, Message, Ti
 from dash.github.api import Installation, NewApp
 from dash.github.db import APP, INSTALLATION, PROVIDER
 from dash.hermes import Delta
+from dash.router import Action, Decision
 from dash.sources.common import Source
 
 CLIENT_SECRET = "fake-client-secret"  # noqa: S105
@@ -21,6 +22,7 @@ class FakeStore:
         self.msgs: list[Message] = []
         self.mems: list[Memory] = []
         self.timeline_rows: list[TimelineEntry] = []
+        self.routes: dict[str, Action] = {}
         self._ids = itertools.count(1)
 
     async def conversations(self, limit: int = 50) -> list[Conversation]:
@@ -101,6 +103,14 @@ class FakeStore:
 
     async def timeline(self, limit: int = 100) -> list[TimelineEntry]:
         return self.timeline_rows[::-1][:limit]
+
+    async def set_decision(self, job_id: str, decision: Decision) -> None:
+        for row in (r for r in self.timeline_rows if r.job_id == job_id):
+            for key, value in decision.model_dump(mode="json").items():
+                setattr(row, key, value)
+
+    async def source_route(self, source: str) -> Action | None:
+        return self.routes.get(source)
 
     async def delete_memory(self, memory_id: int) -> bool:
         before = len(self.mems)
@@ -237,13 +247,14 @@ class FakeSourceStore:
     async def sources(self) -> list[DataSource]:
         return list(self.rows.values())
 
-    async def add(self, source: Source, every_minutes: int) -> DataSource:
+    async def add(self, source: Source, every_minutes: int, route: str | None = None) -> DataSource:
         existing = next(
             (r for r in self.rows.values() if (r.kind, r.target) == (source.kind, source.target)),
             None,
         )
         row = existing or DataSource(id=next(self._ids), kind=source.kind, target=source.target)
         row.every_minutes, row.enabled = every_minutes, True
+        row.route = route or row.route
         self.rows[row.id] = row
         return row
 

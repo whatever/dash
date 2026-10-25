@@ -80,3 +80,15 @@ def test_parse_facts() -> None:
 def test_system_prompt() -> None:
     assert system_prompt([]) is None
     assert "- The user likes tea." in (system_prompt(["The user likes tea."]) or "")
+
+
+def test_offline_upgrade_adds_routing_columns() -> None:
+    config = alembic_config(URL)
+    config.output_buffer = io.StringIO()
+
+    command.upgrade(config, "head", sql=True)
+
+    sql = config.output_buffer.getvalue()
+    assert "ALTER TABLE timeline ADD COLUMN action TEXT" in sql
+    assert "ALTER TABLE timeline ADD COLUMN confidence FLOAT" in sql
+    assert "ALTER TABLE sources ADD COLUMN route TEXT" in sql

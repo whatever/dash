@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from dash.db import Store
 from dash.nango import Nango
 from dash.queue import Queue
+from dash.router import Action, Decision, RoutedBy
 from dash.web import create_app
 from tests.fakes import FakeEmbedder, FakeStore
 
@@ -127,3 +128,18 @@ async def test_live_lists_timeline_newest_first(client: TestClient, store: FakeS
         ("chat", {"conversation_id": "c1"}),
     ]
     assert client.post("/api/live").status_code == 405
+
+
+async def test_live_lists_each_decision(client: TestClient, store: FakeStore) -> None:
+    await store.add_timeline("j1", "update", {"title": "News"})
+    await store.add_timeline("j2", "chat", {"conversation_id": "c1"})
+    decision = Decision(
+        action=Action.FLAG, reason="The source's route is flag.", routed_by=RoutedBy.RULES
+    )
+    await store.set_decision("j1", decision)
+    live = client.get("/api/live").json()
+    assert [(e["action"], e["routed_by"], e["confidence"]) for e in live] == [
+        (None, None, None),
+        ("flag", "rules", None),
+    ]
+    assert live[1]["reason"] == "The source's route is flag."

@@ -33,21 +33,17 @@ class SourceStore:
         """Return the sources that are due for a check at the given time."""
         return [row for row in await self.sources() if is_due(row, now)]
 
-    async def add(self, source: Source, every_minutes: int) -> DataSource:
+    async def add(self, source: Source, every_minutes: int, route: str | None = None) -> DataSource:
         """Insert or update the given source and return its row."""
-        values: dict[str, Any] = {
-            "kind": source.kind,
-            "target": source.target,
+        changes: dict[str, Any] = {
             "every_minutes": every_minutes,
             "enabled": True,
+            **({"route": route} if route else {}),
         }
         statement = (
             insert(DataSource)
-            .values(values)
-            .on_conflict_do_update(
-                index_elements=["kind", "target"],
-                set_={"every_minutes": every_minutes, "enabled": True},
-            )
+            .values({"kind": source.kind, "target": source.target, "route": route, **changes})
+            .on_conflict_do_update(index_elements=["kind", "target"], set_=changes)
             .returning(DataSource)
         )
         async with self._session() as session, session.begin():

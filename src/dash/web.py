@@ -133,6 +133,10 @@ def create_app(
                 "kind": e.kind,
                 "data": e.data,
                 "created_at": e.created_at.isoformat() if e.created_at else None,
+                "action": e.action,
+                "routed_by": e.routed_by,
+                "confidence": e.confidence,
+                "reason": e.reason,
             }
             for e in await store.timeline()
         ]

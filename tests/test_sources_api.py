@@ -31,6 +31,7 @@ def test_add_pause_and_remove_a_web_source(client: TestClient) -> None:
         "every_minutes": 15,
         "enabled": True,
         "checked_at": None,
+        "route": None,
     }
 
     paused = client.patch("/api/sources/1", json={"enabled": False}).json()
@@ -72,3 +73,21 @@ def test_is_due(enabled: bool, checked_at: datetime | None, due: bool) -> None:
         kind="web", target="https://n/", every_minutes=60, enabled=enabled, checked_at=checked_at
     )
     assert is_due(row, NOW) is due
+
+
+def test_route_can_be_set_and_cleared(client: TestClient) -> None:
+    added = client.post(
+        "/api/sources", json={"kind": "web", "target": "https://n/", "route": "flag"}
+    ).json()
+    assert added["route"] == "flag"
+
+    assert client.patch("/api/sources/1", json={"enabled": False}).json()["route"] == "flag"
+    assert client.patch("/api/sources/1", json={"route": None}).json()["route"] is None
+
+
+def test_unknown_route_is_rejected(client: TestClient) -> None:
+    client.post("/api/sources", json={"kind": "web", "target": "https://n/"})
+
+    assert client.patch("/api/sources/1", json={"route": "delete"}).status_code == 422
+    assert client.patch("/api/sources/1", json={"route": "chat"}).status_code == 422
+    assert client.get("/api/sources").json()[0]["route"] is None

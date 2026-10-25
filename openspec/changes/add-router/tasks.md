@@ -1,10 +1,10 @@
 ## 1. Decisions and rules
 
-- [ ] 1.1 Add a migration with nullable `action`, `routed_by`, `confidence` and `reason` on `timeline`, and a nullable `route` on `sources`. Verify: the offline migration test renders the columns, and there is a single head.
-- [ ] 1.2 Add `dash.router` with the decision types and `route(job, source_route)` running the `rules` and `fallback` stages. Verify: unit tests for chat, a source route, and the fallback.
-- [ ] 1.3 Record the decision on the timeline entry, and return it from `/api/live`. Verify: store and API tests, including an entry with no decision.
-- [ ] 1.4 Make `Worker.handle` route each job after recording it, and make `handle_update` act on the decision (`ignore`, `remember`, `flag`). Verify: worker tests for each action and for chat.
-- [ ] 1.5 Accept, validate and list `route` in the sources API. Verify: API tests for set, clear and an unknown value.
+- [x] 1.1 Add a migration with nullable `action`, `routed_by`, `confidence` and `reason` on `timeline`, and a nullable `route` on `sources`. Verify: the offline migration test renders the columns, and there is a single head.
+- [x] 1.2 Add `dash.router` with the decision types and `route(job, source_route)` running the `rules` and `fallback` stages. Verify: unit tests for chat, a source route, and the fallback.
+- [x] 1.3 Record the decision on the timeline entry, and return it from `/api/live`. Verify: store and API tests, including an entry with no decision.
+- [x] 1.4 Make `Worker.handle` route each job after recording it, and make `handle_update` act on the decision (`ignore`, `remember`, `flag`). Verify: worker tests for each action and for chat.
+- [x] 1.5 Accept, validate and list `route` in the sources API. Verify: API tests for set, clear and an unknown value.
 
 ## 2. Model triage
 

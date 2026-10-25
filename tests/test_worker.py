@@ -9,6 +9,7 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from dash.db import Store
 from dash.hermes import Delta
 from dash.queue import Job, Queue
+from dash.router import Action
 from dash.worker import Worker
 from tests.fakes import FakeChat, FakeEmbedder, FakeExtractor, FakeStore
 
@@ -164,3 +165,26 @@ async def test_every_job_is_recorded_on_the_timeline() -> None:
         ("job", "chat", {"conversation_id": str(conv_id)}),
     ]
     assert rows[0][:2] == ("j3", "chat")
+
+
+async def test_every_job_records_its_decision() -> None:
+    worker, store, _, _, job = await setup(FakeChat(["ok"]), [])
+    await worker.handle(job)
+    await worker.handle(Job("2-0", "j2", kind="update", data={"source": "web:x", "title": "T"}))
+    rows = {r.job_id: (r.action, r.routed_by) for r in await store.timeline()}
+    assert rows == {"job": ("chat", "rules"), "j2": ("remember", "fallback")}
+
+
+async def test_ignored_update_is_not_stored() -> None:
+    worker, store, queue, _, _ = await setup(FakeChat([]), [])
+    store.routes["web:x"] = Action.IGNORE
+    await worker.handle(Job("2-0", "j2", kind="update", data={"source": "web:x", "title": "T"}))
+    assert store.mems == []
+    assert [e async for e in queue.events("j2")] == [{"kind": "done", "stored": False}]
+
+
+async def test_flagged_update_is_stored_with_the_flag() -> None:
+    worker, store, _, _, _ = await setup(FakeChat([]), [])
+    store.routes["web:x"] = Action.FLAG
+    await worker.handle(Job("2-0", "j2", kind="update", data={"source": "web:x", "title": "T"}))
+    assert [m.tags for m in store.mems] == [["web", "web:x", "flagged"]]
