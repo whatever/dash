@@ -12,6 +12,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Identity,
     Integer,
@@ -20,6 +21,7 @@ from sqlalchemy import (
     delete,
     func,
     select,
+    update,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.engine import CursorResult, make_url
@@ -30,6 +32,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from dash.router import Action, Decision
 
 MIGRATIONS = Path(__file__).parent / "migrations"
 
@@ -113,6 +117,10 @@ class TimelineEntry(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+    action: Mapped[str | None] = mapped_column(Text, default=None)
+    routed_by: Mapped[str | None] = mapped_column(Text, default=None)
+    confidence: Mapped[float | None] = mapped_column(Float, default=None)
+    reason: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class DataSource(Base):
@@ -128,6 +136,7 @@ class DataSource(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    route: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 def async_url(url: str) -> str:
@@ -262,6 +271,24 @@ class Store:
     async def add_timeline(self, job_id: str, kind: str, data: dict[str, Any]) -> None:
         async with self._session() as session, session.begin():
             session.add(TimelineEntry(job_id=job_id, kind=kind, data=data))
+
+    async def set_decision(self, job_id: str, decision: Decision) -> None:
+        """Record the routing decision on the job's timeline entry."""
+        async with self._session() as session, session.begin():
+            await session.execute(
+                update(TimelineEntry)
+                .where(TimelineEntry.job_id == job_id)
+                .values(decision.model_dump(mode="json"))
+            )
+
+    async def source_route(self, source: str) -> Action | None:
+        """Return the fixed route of the source an item came from, if it has one."""
+        kind, _, target = source.partition(":")
+        async with self._session() as session:
+            route = await session.scalar(
+                select(DataSource.route).where(DataSource.kind == kind, DataSource.target == target)
+            )
+        return Action(route) if route else None
 
     async def timeline(self, limit: int = 100) -> Sequence[TimelineEntry]:
         async with self._session() as session:

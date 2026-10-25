@@ -1,7 +1,7 @@
 """Consumes `dash:jobs`.
 
 `chat` jobs recall memories, stream a hermes reply and store new memories.
-`update` jobs (from `dash scrape`) store a real-world item as a memory.
+`update` jobs (from `dash scrape`) are routed, then ignored or stored as a memory.
 """
 
 import asyncio
@@ -23,6 +23,7 @@ from dash.memory import (
     system_prompt,
 )
 from dash.queue import UPDATE, Job, Queue
+from dash.router import Action, route
 from dash.sources.common import Item
 
 log = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ log = logging.getLogger(__name__)
 # Coalesce deltas so a fast model doesn't write one Redis entry per token.
 FLUSH_CHARS = 48
 RETRY_SECONDS = 2
+FLAGGED = "flagged"
 
 
 def record(log: list[dict[str, Any]], kind: str, data: Mapping[str, Any]) -> None:
@@ -92,12 +94,22 @@ class Worker:
         # Every inbound job lands on the LIVE timeline before it runs.
         data = {"conversation_id": job.conversation_id} if job.conversation_id else job.data
         await self.store.add_timeline(job.job_id, job.kind, data)
-        if job.kind == UPDATE:
-            await self.handle_update(job)
+        source_route = (
+            await self.store.source_route(str(job.data.get("source", "")))
+            if job.kind == UPDATE
+            else None
+        )
+        decision = route(job, source_route)
+        await self.store.set_decision(job.job_id, decision)
+        if decision.action == Action.CHAT:
+            await self.handle_chat(job)
             return
-        await self.handle_chat(job)
+        await self.handle_update(job, decision.action)
 
-    async def handle_update(self, job: Job) -> None:
+    async def handle_update(self, job: Job, action: Action) -> None:
+        if action == Action.IGNORE:
+            await self.queue.emit(job.job_id, "done", stored=False)
+            return
         item = Item.from_dict(job.data)
         text = item.text()
         embedding = await self.embedder.embed(text)
@@ -106,9 +118,8 @@ class Worker:
             await self.queue.emit(job.job_id, "done", stored=False)
             return
         source_kind = item.source.split(":", 1)[0]
-        await self.store.add_memory(
-            text, embedding, source="scrape", tags=[source_kind, item.source]
-        )
+        tags = [source_kind, item.source, *([FLAGGED] if action == Action.FLAG else [])]
+        await self.store.add_memory(text, embedding, source="scrape", tags=tags)
         await self.queue.emit(job.job_id, "done", stored=True)
         log.info("stored update from %s: %s", item.source, item.title)
 

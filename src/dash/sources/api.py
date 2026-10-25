@@ -1,15 +1,18 @@
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from dash.db import DataSource
+from dash.router import Action
 from dash.sources.common import Source
 from dash.sources.db import SourceStore
 from dash.sources.inputs import KINDS
 
 MIN_MINUTES = 5
 MAX_MINUTES = 60 * 24 * 7
+
+SourceRoute = Literal[Action.FLAG, Action.IGNORE, Action.REMEMBER]
 
 
 class NewSource(BaseModel):
@@ -18,6 +21,7 @@ class NewSource(BaseModel):
     kind: str = Field(pattern=f"^({'|'.join(KINDS)})$")
     target: str = Field(min_length=1, max_length=2000)
     every_minutes: int = Field(default=60, ge=MIN_MINUTES, le=MAX_MINUTES)
+    route: SourceRoute | None = None
 
 
 class SourceChange(BaseModel):
@@ -25,6 +29,7 @@ class SourceChange(BaseModel):
 
     enabled: bool | None = None
     every_minutes: int | None = Field(default=None, ge=MIN_MINUTES, le=MAX_MINUTES)
+    route: SourceRoute | None = None
 
 
 def source_json(row: DataSource) -> dict[str, Any]:
@@ -36,6 +41,7 @@ def source_json(row: DataSource) -> dict[str, Any]:
         "every_minutes": row.every_minutes,
         "enabled": row.enabled,
         "checked_at": row.checked_at.isoformat() if row.checked_at else None,
+        "route": row.route,
     }
 
 
@@ -51,11 +57,16 @@ def create_router(*, store: SourceStore) -> APIRouter:
     async def add(body: NewSource) -> dict[str, Any]:
         if body.kind == "web" and not body.target.startswith(("http://", "https://")):
             raise HTTPException(422, "A web source needs an http:// or https:// URL.")
-        return source_json(await store.add(Source(body.kind, body.target), body.every_minutes))
+        return source_json(
+            await store.add(Source(body.kind, body.target), body.every_minutes, body.route)
+        )
 
     @router.patch("/{source_id}")
     async def change(source_id: int, body: SourceChange) -> dict[str, Any]:
-        row = await store.update(source_id, **body.model_dump(exclude_none=True))
+        values = body.model_dump(mode="json", exclude_none=True)
+        if "route" in body.model_fields_set:
+            values["route"] = body.route
+        row = await store.update(source_id, **values)
         if row is None:
             raise HTTPException(404)
         return source_json(row)
