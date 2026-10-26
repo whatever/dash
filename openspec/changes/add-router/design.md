@@ -27,6 +27,19 @@ The same router pattern runs in another project as a stage pipeline: dedupe → 
 
 **Stages return a decision or pass.** Each stage takes the job and returns a decision or nothing, and the first decision wins. The stages are `rules`, then `model` (updates only, when `ROUTER_TRIAGE` is on), then `fallback`. Later stages (thread binding, ask) slot into the same list.
 
+```mermaid
+flowchart TD
+    job["Job from dash:jobs"] --> timeline["Recorded on the timeline"]
+    timeline --> rules{"rules"}
+    rules -- "chat job" --> chat["chat"]
+    rules -- "source has a route" --> fixed["the source's route"]
+    rules -- "no rule" --> model{"model"}
+    model -- "confidence at or above ROUTER_MIN_CONFIDENCE" --> triaged["ignore, remember or flag"]
+    model -- "triage off, low confidence or failure" --> fallback["fallback: remember"]
+```
+
+The decision is written onto the timeline entry before the worker acts on it.
+
 **Fallback is today's behaviour.** `fallback` always returns `remember`. A model decision below `ROUTER_MIN_CONFIDENCE` is replaced by `fallback`, with the model's guess kept in the reason, so a doubtful model never drops an item.
 
 **Triage reuses the extraction model.** A `Triager` protocol next to `Extractor`, with a Bedrock implementation on `EXTRACT_MODEL`, temperature 0 and a JSON reply of `action`, `confidence` and `reason`. Anything malformed, or an action outside the three, counts as a failure.
