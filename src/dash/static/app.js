@@ -257,7 +257,31 @@ function renderer(node) {
     } else if (ev.kind === "status") {
       trace.append(el("div", { className: "status", textContent: ev.message || JSON.stringify(ev) }));
     } else if (ev.kind === "memories") {
-      trace.prepend(el("div", { className: "recalled", textContent: `Recalled ${ev.items.length} memories` }));
+      const body = el("div", { className: "recalled-body" });
+      const memoryList = el("ul", { className: "recalled-list" },
+        ...ev.items.map((m) => {
+          const meta = [m.source, m.created_at?.slice(0, 10), m.distance != null && `distance ${m.distance.toFixed(2)}`]
+            .filter(Boolean)
+            .join(" · ");
+          const item = el("li", {},
+            el("div", { className: "recalled-content", textContent: m.content }),
+            el("div", { className: "meta", textContent: meta })
+          );
+          item.addEventListener("click", () => {
+            go("/memories");
+            // Optionally focus on the specific memory by setting search
+            $("#memory-q").value = m.content.slice(0, 50);
+            loadMemories($("#memory-q").value);
+          });
+          return item;
+        })
+      );
+      body.append(memoryList);
+      const recalled = el("details", { className: "recalled" },
+        el("summary", { textContent: `Recalled ${ev.items.length} ${ev.items.length === 1 ? "memory" : "memories"}` }),
+        body
+      );
+      trace.prepend(recalled);
     } else if (ev.kind === "done" || ev.kind === "error") {
       settle();
       tools.forEach((row) => row.dataset.status === "running" && (row.dataset.status = "completed"));
