@@ -1,10 +1,16 @@
 # Seeded onto the PVC at /opt/data/config.yaml on every start. Derived
 # from apps/hermes-agent/base/profiles/opus/config.yaml without the
 # webhook, cron and plugin sections, which dash does not use.
+# us. first while global. has an outage (2026-10-27). global. is the fallback.
 model:
-  default: global.anthropic.claude-opus-5-5
+  default: us.anthropic.claude-opus-5-5
   provider: bedrock
   base_url: https://bedrock-runtime.us-east-1.amazonaws.com
+
+fallback_providers:
+  - provider: bedrock
+    model: global.anthropic.claude-opus-5-5
+    base_url: https://bedrock-runtime.us-east-1.amazonaws.com
 
 bedrock:
   region: us-east-1
