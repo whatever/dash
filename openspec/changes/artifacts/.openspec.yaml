@@ -1,0 +1,17 @@
+title: Artifacts System
+summary: Create, share, and iterate on substantial content (proposals, designs, visualizations) in a dedicated panel with version history and sharing
+status: draft
+owner: dash-team
+
+proposal: proposal.md
+design: design.md
+tasks: tasks.md
+specs:
+  - specs/database-schema.md
+  - specs/artifacts-service.md
+  - specs/worker-integration.md
+  - specs/ui-rendering.md
+
+stack_on:
+  pr: 32
+  title: "chore: adopt OpenSpec for specs and proposals"
