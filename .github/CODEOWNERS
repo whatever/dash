@@ -1,0 +1,6 @@
+/charts/ @whatever
+/Dockerfile @whatever
+/.github/ @whatever
+/src/dash/github/ @whatever
+/src/dash/webhook.py @whatever
+/src/dash/migrations/ @whatever
