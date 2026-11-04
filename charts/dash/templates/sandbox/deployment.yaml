@@ -193,6 +193,65 @@ spec:
             limits:
               cpu: "100m"
               memory: "64Mi"
+        {{- with .Values.hermes.sandbox.serena }}
+        {{- if .enabled }}
+        {{- if not $.Values.networkPolicies.enabled }}
+        {{- fail "hermes.sandbox.serena needs networkPolicies.enabled: its MCP endpoint has no auth" }}
+        {{- end }}
+        - name: serena
+          image: {{ .image }}
+          command:
+            - /workspaces/serena/.venv/bin/serena
+            - start-mcp-server
+            - --transport
+            - streamable-http
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ .port | quote }}
+            - --open-web-dashboard
+            - "false"
+            - --context
+            - {{ .context | quote }}
+            {{- with .project }}
+            - --project
+            - {{ . | quote }}
+            {{- end }}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            seccompProfile: { type: RuntimeDefault }
+          env:
+            - name: HOME
+              value: /serena-home
+            - name: SERENA_HOME
+              value: /serena-home/config
+          ports:
+            - name: serena
+              containerPort: {{ .port }}
+          startupProbe:
+            tcpSocket: { port: serena }
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket: { port: serena }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: serena }
+            periodSeconds: 30
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /config/workspace
+              subPath: workspace
+            - name: serena-home
+              mountPath: /serena-home
+          resources: {{- toYaml .resources | nindent 12 }}
+        {{- end }}
+        {{- end }}
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -223,4 +282,8 @@ spec:
           configMap:
             name: github-refresher
             defaultMode: 0444
+        {{- if .Values.hermes.sandbox.serena.enabled }}
+        - name: serena-home
+          emptyDir: {}
+        {{- end }}
 {{- end }}

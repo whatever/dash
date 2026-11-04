@@ -73,6 +73,18 @@ hermes:
       limits: { cpu: "1", memory: 2Gi }
     ghVersion: "2.65.0"
     ghArch: amd64
+    # Serena MCP sidecar: LSP code tools for the agent, reached at dash-sandbox:<port>/mcp.
+    # No auth on the endpoint, so it requires networkPolicies.enabled. It sees only /config/workspace.
+    # Language servers are memory-hungry; raise the limit for large repos.
+    serena:
+      enabled: false
+      context: ide-assistant
+      project: /config/workspace/dash
+      image: ghcr.io/oraios/serena@sha256:c15999c2ffc6be60ca5152abfd6d32fdd2cf5c6691296aa525427590fe24eace
+      port: 9121
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits: { cpu: "1", memory: 2Gi }
 
 externalSecrets:
   enabled: true

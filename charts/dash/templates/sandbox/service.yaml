@@ -11,4 +11,9 @@ spec:
     - name: ssh
       port: 2222
       targetPort: ssh
+    {{- if .Values.hermes.sandbox.serena.enabled }}
+    - name: serena
+      port: {{ .Values.hermes.sandbox.serena.port }}
+      targetPort: serena
+    {{- end }}
 {{- end }}

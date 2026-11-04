@@ -39,4 +39,7 @@ spec:
             matchLabels: {{- include "dash.selectorLabels" (list . "dash-agent") | nindent 14 }}
       ports:
         - port: ssh
+        {{- if .Values.hermes.sandbox.serena.enabled }}
+        - port: serena
+        {{- end }}
 {{- end }}
