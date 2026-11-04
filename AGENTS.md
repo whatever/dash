@@ -19,3 +19,16 @@
 
 - use semantic pull request titles with `{fix,feat,chore}`
 - keep descriptions simple and up-to-date
+
+## PR size and scope
+
+- One concern per PR. Don't mix a proposal (openspec) with its implementation.
+- Aim for under 400 changed lines, excluding lockfiles and generated files. Over 1000, split or stack the PR; the reviewer skips it otherwise.
+- Stack large work as a chain of PRs, each reviewable and revertable on its own.
+- Close a PR you replace instead of opening a duplicate.
+
+## Review rounds
+
+- The dash reviewer reviews a PR at most 3 times. If it is still finding problems, stop pushing fixes and rethink the approach or ask a human.
+- Fix every instance of a reported class of bug in one push, not one line per round.
+- See CONTRIBUTING.md for which changes need a human reviewer.

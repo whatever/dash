@@ -95,3 +95,7 @@ Before the first sync, do these steps:
 ```sh
 uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
