@@ -104,7 +104,8 @@ class Worker:
         await self.handle_chat(job)
 
     async def handle_review(self, job: Job) -> None:
-        text = await self.handle_chat(job, done=False)
+        notice = job.data.get("notice")
+        text = notice or await self.handle_chat(job, done=False)
         if text is None:
             return
         if not text.strip():
