@@ -111,6 +111,14 @@ function setText(node, text) {
   node.querySelectorAll("a[href]").forEach((a) => Object.assign(a, { target: "_blank", rel: "noopener noreferrer" }));
 }
 
+// True when the chat is scrolled to (near) the bottom. On narrow screens
+// #messages doesn't scroll itself, so fall back to the page scroller.
+function atBottom() {
+  const m = $("#messages");
+  const s = m.scrollHeight > m.clientHeight ? m : document.scrollingElement;
+  return s.scrollHeight - s.scrollTop - s.clientHeight < 80;
+}
+
 function bubble(role, text) {
   const node = el("div", { className: `msg ${role}` });
   setText(node, text);
@@ -278,13 +286,14 @@ function follow(jobId, node, conversation) {
       if (ev.kind === "delta") pulse();
       const next = conversation === state.conversation && loopyFor(ev);
       if (next) setLoopy(...next);
+      const stick = atBottom();
       render(ev);
       if (ev.kind === "done" || ev.kind === "error") {
         source.close();
         clearPendingJob(conversation);
         resolve();
       }
-      node.scrollIntoView({ block: "end" });
+      if (stick) node.scrollIntoView({ block: "end" });
     };
   });
 }
