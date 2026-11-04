@@ -58,6 +58,14 @@ In the Apps tab, click **Create GitHub App**. Type an organization, or leave it 
 
 dash stores the private key and secrets as plain JSONB. Protect the database.
 
+### PR reviews
+
+`POST /api/webhook` takes GitHub `pull_request` events. It checks `X-Hub-Signature-256` against `WEBHOOK_SECRET`, then enqueues one `review` job per head SHA. It ignores other events, drafts, and repeat SHAs with `204`.
+
+The worker runs a review job like a chat turn, so it shows up as a conversation. Then it posts the reply to the PR as a `COMMENT` review, as the installed GitHub App.
+
+In the repo or app webhook settings, set the URL to `https://<host>/api/webhook`, the content type to `application/json`, the secret to `WEBHOOK_SECRET`, and the events to **Pull requests**. In the chart, set `dash.webhook.enabled`. This adds an ingress for `/api/webhook` with no basic auth.
+
 ## Settings
 
 | Env var | Default |
@@ -69,6 +77,7 @@ dash stores the private key and secrets as plain JSONB. Protect the database.
 | `NANGO_URL`, `NANGO_SECRET_KEY` | `http://localhost:3003`, empty (disabled) |
 | `NANGO_PUBLIC_URL`, `NANGO_CONNECT_URL` | Browser-facing Nango API and Connect UI addresses |
 | `EMBED_MODEL`, `EXTRACT_MODEL`, `MEMORY_TOP_K` | Titan v2, Haiku 4.5, `8` |
+| `WEBHOOK_SECRET` | empty (`/api/webhook` returns `503`) |
 
 ## Deploy
 

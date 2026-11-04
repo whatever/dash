@@ -27,6 +27,11 @@ env:
   - name: DATABASE_URL
     valueFrom:
       secretKeyRef: { name: {{ include "dash.postgresSecret" . }}, key: DASH_DATABASE_URL }
+  {{- if .Values.dash.webhook.enabled }}
+  - name: WEBHOOK_SECRET
+    valueFrom:
+      secretKeyRef: { name: {{ .Values.dash.webhook.secret }}, key: WEBHOOK_SECRET }
+  {{- end }}
   {{- if not .Values.redis.deploy }}
   - name: REDIS_URL
     valueFrom:

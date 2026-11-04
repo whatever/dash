@@ -24,6 +24,7 @@ class Settings:
     embed_model: str
     extract_model: str
     memory_top_k: int
+    webhook_secret: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -42,4 +43,5 @@ class Settings:
             embed_model=_env("EMBED_MODEL", "amazon.titan-embed-text-v2:0"),
             extract_model=_env("EXTRACT_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
             memory_top_k=int(_env("MEMORY_TOP_K", "8")),
+            webhook_secret=_env("WEBHOOK_SECRET", ""),
         )

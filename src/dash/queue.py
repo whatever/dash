@@ -30,6 +30,7 @@ SOCKET_TIMEOUT_SECONDS = 30
 SEEN_TTL_SECONDS = 30 * 24 * 3600
 CHAT = "chat"
 UPDATE = "update"
+REVIEW = "review"
 
 
 def events_key(job_id: str) -> str:
@@ -82,6 +83,27 @@ class Queue:
         job_id = uuid.uuid4().hex
         await self.redis.xadd(JOBS, {"job_id": job_id, "kind": UPDATE, "data": json.dumps(item)})
         return job_id
+
+    async def enqueue_review(self, conversation_id: str, target: dict[str, Any]) -> str:
+        job_id = uuid.uuid4().hex
+        await self.redis.xadd(
+            JOBS,
+            {
+                "job_id": job_id,
+                "kind": REVIEW,
+                "conversation_id": conversation_id,
+                "data": json.dumps(target),
+            },
+        )
+        return job_id
+
+    async def count_review(self, pr: str, head_sha: str) -> tuple[int, str | None]:
+        """Return the PR's review round and the head SHA reviewed before it."""
+        rounds = int(await self.redis.incr(f"dash:review:{pr}:rounds"))
+        previous = await self.redis.getset(f"dash:review:{pr}:sha", head_sha)
+        await self.redis.expire(f"dash:review:{pr}:rounds", SEEN_TTL_SECONDS)
+        await self.redis.expire(f"dash:review:{pr}:sha", SEEN_TTL_SECONDS)
+        return rounds, previous
 
     async def seen(self, item: Keyed) -> bool:
         return bool(await self.redis.exists(seen_key(item)))
