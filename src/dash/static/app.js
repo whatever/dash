@@ -42,6 +42,27 @@ function trackActivity(id, ev) {
   paintActivity(id);
 }
 
+// Memories nav: dots fly in along a track when memories are stored, and out when recalled.
+const memoryTrack = el("span", { className: "mem-track", ariaHidden: "true" });
+document.querySelector('nav a[data-tab="memories"]').append(memoryTrack);
+let newestMemory = null;
+
+function memoryDots(count, direction) {
+  for (let i = 0; i < Math.min(count, 12); i++) {
+    const dot = el("i", { className: `mem-dot ${direction}` });
+    dot.style.animationDelay = `${i * 90}ms`;
+    dot.addEventListener("animationend", () => dot.remove());
+    memoryTrack.append(dot);
+  }
+}
+
+// Stored memories come from chats, scrapes and the form alike, so watch the newest id.
+async function pollMemories() {
+  const ids = (await api("/api/memories").catch(() => [])).map((m) => m.id);
+  if (newestMemory !== null) memoryDots(ids.filter((id) => id > newestMemory).length, "in");
+  newestMemory = Math.max(newestMemory ?? 0, ...ids);
+}
+
 // Tabs and URLs
 const loaders = {
   memories: () => loadMemories(),
@@ -325,6 +346,7 @@ function follow(jobId, node, conversation) {
     source.onmessage = (e) => {
       const ev = JSON.parse(e.data);
       if (ev.kind === "delta") pulse();
+      if (ev.kind === "memories") memoryDots(ev.items.length, "out");
       const next = conversation === state.conversation && loopyFor(ev);
       if (next) setLoopy(...next);
       const stick = atBottom();
@@ -556,7 +578,9 @@ const last = localStorage.getItem("conversation");
 if (location.pathname === "/" && last && list.some((c) => c.id === last)) history.replaceState({}, "", `/c/${last}`);
 route();
 pollQueue();
+pollMemories();
 setInterval(() => {
   pollQueue();
+  pollMemories();
   if ($("#tab-live").classList.contains("active")) loadLive();
 }, 5000);
