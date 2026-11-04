@@ -27,6 +27,16 @@ button:hover { border-color: var(--accent); }
 ul { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
 #conversations li { padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
 #conversations li span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#conversations li .live { font-size: 0.85em; line-height: 1; color: var(--muted); white-space: nowrap; }
+#conversations li .live sup { font-size: 0.7em; margin-left: 1px; }
+#conversations li .live:is([data-phase="thinking"], [data-phase="tool"], [data-phase="writing"]) { animation: live-pulse 1.2s ease-in-out infinite; }
+#conversations li .live[data-phase="tool"] { display: inline-block; animation: live-pop 0.35s ease-out, live-pulse 1.2s ease-in-out 0.35s infinite; }
+#conversations li .live[data-phase="done"] { color: #16a34a; }
+#conversations li .live[data-phase="unread"] { color: var(--accent); }
+#conversations li:has(.live[data-phase="unread"]) span { font-weight: 600; }
+@keyframes live-pulse { 50% { opacity: 0.35; } }
+@keyframes live-pop { from { transform: scale(1.6); } }
+@media (prefers-reduced-motion: reduce) { #conversations li .live { animation: none !important; } }
 #conversations li .delete { border: none; background: none; padding: 0 4px; opacity: 0; color: inherit; }
 #conversations li:hover .delete, #conversations li .delete:focus { opacity: 0.6; }
 #conversations li .delete:hover { opacity: 1; color: var(--accent); }
