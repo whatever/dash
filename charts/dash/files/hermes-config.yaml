@@ -43,6 +43,9 @@ toolsets:
   - memory
   - session_search
   - todo
+  {{- if .Values.hermes.sandbox.serena.enabled }}
+  - mcp-serena
+  {{- end }}
 
 {{- if .Values.hermes.sandbox.serena.enabled }}
 mcp_servers:
