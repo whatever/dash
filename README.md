@@ -90,6 +90,10 @@ Before the first sync, do these steps:
 
 `hermes/skills/nango/SKILL.md` is the hermes skill for connected apps. To use it, copy it into your hermes skills.
 
+### Serena
+
+`hermes.sandbox.serena.enabled` adds a [Serena](https://github.com/oraios/serena) MCP sidecar to `dash-sandbox`, giving the agent LSP code tools (find symbol, references, symbol edits) on `/config/workspace`. Its endpoint has no auth, so the chart refuses to render it unless `networkPolicies.enabled` is set. `execute_shell_command` is excluded; the agent already has a terminal. `project` sets the active project; state in `/serena-home` resets on restart. Language servers need memory, so raise `resources.limits.memory` for big repos.
+
 ## Checks
 
 ```sh
