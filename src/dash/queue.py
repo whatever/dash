@@ -97,6 +97,14 @@ class Queue:
         )
         return job_id
 
+    async def count_review(self, pr: str, head_sha: str) -> tuple[int, str | None]:
+        """Return the PR's review round and the head SHA reviewed before it."""
+        rounds = int(await self.redis.incr(f"dash:review:{pr}:rounds"))
+        previous = await self.redis.getset(f"dash:review:{pr}:sha", head_sha)
+        await self.redis.expire(f"dash:review:{pr}:rounds", SEEN_TTL_SECONDS)
+        await self.redis.expire(f"dash:review:{pr}:sha", SEEN_TTL_SECONDS)
+        return rounds, previous
+
     async def seen(self, item: Keyed) -> bool:
         return bool(await self.redis.exists(seen_key(item)))
 
