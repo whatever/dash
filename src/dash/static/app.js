@@ -4,6 +4,43 @@ import DOMPurify from "./vendor/purify.es.js";
 import inputs from "./inputs/index.js";
 
 const state = { conversation: null, config: {} };
+// Per-conversation live activity shown in the Chats nav: { phase, icon, detail, tools, unread }.
+const activity = new Map();
+const PHASE_ICON = { thinking: "\u{1F4AD}", writing: "\u270D\uFE0F", done: "\u2713", error: "\u26A0\uFE0F", unread: "\u25CF" };
+
+function badgeFor(id) {
+  const a = activity.get(id);
+  const badge = el("span", { className: "live" });
+  if (!a) return badge;
+  const phase = a.unread && !["thinking", "writing", "tool"].includes(a.phase) ? (a.phase === "error" ? "error" : "unread") : a.phase;
+  badge.dataset.phase = phase;
+  badge.textContent = (phase === "tool" ? a.icon : PHASE_ICON[phase]) || "";
+  if (a.tools) badge.append(el("sup", { textContent: String(a.tools) }));
+  badge.title = [phase, a.detail].filter(Boolean).join(": ");
+  return badge;
+}
+
+function paintActivity(id) {
+  const li = document.querySelector(`#conversations li[data-id="${id}"]`);
+  if (li) li.querySelector(".live").replaceWith(badgeFor(id));
+}
+
+function trackActivity(id, ev) {
+  const a = activity.get(id) || { phase: "thinking", tools: 0 };
+  if (ev.kind === "reasoning") a.phase = "thinking";
+  else if (ev.kind === "delta") a.phase = "writing";
+  else if (ev.kind === "status") a.detail = ev.message || a.detail;
+  else if (ev.kind === "tool" && (ev.status === "running" || !ev.status)) {
+    Object.assign(a, { phase: "tool", icon: ev.emoji || "\u{1F527}", detail: ev.label || ev.tool, tools: a.tools + 1 });
+  } else if (ev.kind === "done" || ev.kind === "error") {
+    a.phase = ev.kind;
+    a.detail = ev.kind === "error" ? ev.message : a.tools ? `${a.tools} tool calls` : "";
+    a.unread = id !== state.conversation;
+    if (!a.unread) setTimeout(() => activity.get(id) === a && a.phase === "done" && (activity.delete(id), paintActivity(id)), 4000);
+  } else return;
+  activity.set(id, a);
+  paintActivity(id);
+}
 
 // Tabs and URLs
 const loaders = {
@@ -91,7 +128,8 @@ async function loadConversations() {
         }
         loadConversations();
       });
-      const li = el("li", { title: c.title }, el("span", { textContent: c.title }), del);
+      const li = el("li", { title: c.title }, el("span", { textContent: c.title }), badgeFor(c.id), del);
+      li.dataset.id = c.id;
       if (c.id === state.conversation) li.classList.add("active");
       li.addEventListener("click", () => go(`/c/${c.id}`));
       return li;
@@ -129,6 +167,9 @@ function bubble(role, text) {
 
 async function openConversation(id) {
   state.conversation = id;
+  const seen = activity.get(id);
+  if (seen && !["thinking", "writing", "tool"].includes(seen.phase)) activity.delete(id);
+  paintActivity(id);
   localStorage.setItem("conversation", id);
   setLoopy("idle");
   showTab("chat");
@@ -288,6 +329,7 @@ function follow(jobId, node, conversation) {
       if (next) setLoopy(...next);
       const stick = atBottom();
       render(ev);
+      trackActivity(conversation, ev);
       if (ev.kind === "done" || ev.kind === "error") {
         source.close();
         clearPendingJob(conversation);
