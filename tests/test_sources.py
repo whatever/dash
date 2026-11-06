@@ -10,6 +10,7 @@ import dash
 from dash.db import Store
 from dash.queue import JOBS, UPDATE, Job, Queue
 from dash.sources.common import Item, Source, plain
+from dash.sources.inputs.atom import Atom
 from dash.sources.inputs.bushwick import BushwickDaily
 from dash.sources.inputs.hackernews import HackerNews
 from dash.sources.inputs.web import Web, parse_page
@@ -181,6 +182,18 @@ BUSHWICK = (
 )
 
 
+ATOM = (
+    '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Commits</title>'
+    "<entry><id>tag:x,1</id><title>fix: a</title>"
+    '<link rel="alternate" type="text/html" href="https://github.com/o/r/commit/1"/>'
+    "<published>2026-10-15T10:00:00Z</published><updated>2026-10-16T10:00:00Z</updated>"
+    '<content type="html">&lt;p&gt;Body &amp;amp; more&lt;/p&gt;</content></entry>'
+    "<entry><title>no id</title>"
+    '<link href="https://github.com/o/r/commit/2"/><updated>2026-10-17T10:00:00Z</updated>'
+    "</entry></feed>"
+)
+
+
 def mock(body: str):
     return lambda: httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: httpx.Response(200, text=body))
@@ -214,3 +227,30 @@ async def test_bushwick_one_item_per_article() -> None:
         "Bar opens",
         "A new bar .",
     )
+
+
+async def test_atom_one_item_per_entry() -> None:
+    a, b = await Atom("https://github.com/o/r/commits/main.atom", mock(ATOM)).fetch()
+    assert isinstance(Atom("u"), Web)
+    assert (a.key, a.title, a.url, a.published) == (
+        "tag:x,1",
+        "fix: a",
+        "https://github.com/o/r/commit/1",
+        "2026-10-15T10:00:00Z",
+    )
+    assert a.summary == "Body & more"
+    assert a.source == "atom:https://github.com/o/r/commits/main.atom"
+    assert (b.key, b.published, b.summary) == (
+        "https://github.com/o/r/commit/2",
+        "2026-10-17T10:00:00Z",
+        "",
+    )
+
+
+async def test_atom_rejects_non_feed() -> None:
+    with pytest.raises(ValueError, match="Not an Atom feed"):
+        await Atom("https://x/f.atom", mock("<html>")).fetch()
+
+
+def test_atom_kind_parses() -> None:
+    assert Source.parse("atom:https://github.com/o/r/commits/main.atom").kind == "atom"

@@ -25,19 +25,21 @@ const HOSTS = {
   "news.ycombinator.com": { kind: "hackernews", label: "Hacker News" },
   "bushwickdaily.com": { kind: "bushwick", label: "Bushwick Daily" },
 };
+const ATOM = { kind: "atom", label: "Atom feed" };
 const WEB = { kind: "web", label: "page" };
 
 export const pageInput = {
-  kinds: ["web", ...Object.values(HOSTS).map((h) => h.kind)],
+  kinds: ["web", ATOM.kind, ...Object.values(HOSTS).map((h) => h.kind)],
 
-  // The input source for a URL, picked by host name ("www." ignored).
+  // The input source for a URL: ".atom" paths are feeds, then picked by host name ("www." ignored).
   fromUrl(url) {
-    const host = new URL(url).hostname.replace(/^www\./, "");
-    return HOSTS[host] || WEB;
+    const { hostname, pathname } = new URL(url);
+    if (pathname.endsWith(".atom")) return ATOM;
+    return HOSTS[hostname.replace(/^www\./, "")] || WEB;
   },
 
   labelOf(kind) {
-    return (Object.values(HOSTS).find((h) => h.kind === kind) || WEB).label;
+    return ([ATOM, ...Object.values(HOSTS)].find((h) => h.kind === kind) || WEB).label;
   },
 };
 
@@ -45,7 +47,7 @@ export default {
   kind: "web",
   kinds: pageInput.kinds,
   title: "Web",
-  hint: "dash checks each page on its schedule. Hacker News and Bushwick Daily pages become one memory per new story; any other page becomes a memory when its visible text changes.",
+  hint: "dash checks each page on its schedule. Atom feeds (URLs ending in .atom, like a GitHub commits feed) and Hacker News and Bushwick Daily pages become one memory per new entry; any other page becomes a memory when its visible text changes.",
   mount(container, sources, reload) {
     const url = el("input", { type: "url", required: true, placeholder: "https://news.ycombinator.com/" });
     const every = el("select", { title: "How often to check" }, ...EVERY.map((n) => el("option", { value: n, textContent: `every ${minutes(n)}`, selected: n === 60 })));
