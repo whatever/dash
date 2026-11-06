@@ -1,0 +1,16 @@
+title: Agent MCP Tool Discovery and Approval
+summary: Allow agents to discover, request, and install MCP tools through chat with user approval
+status: draft
+owner: dash-agent
+
+proposal: proposal.md
+design: design.md
+tasks: tasks.md
+specs:
+  - specs/discovery.md
+  - specs/approval.md
+  - specs/persistence.md
+
+stack_on:
+  pr: 39
+  title: "feat: inbox system"
