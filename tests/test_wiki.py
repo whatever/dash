@@ -147,6 +147,17 @@ async def test_pages_can_be_read_and_searched(root: Path) -> None:
     assert await wiki.search("a'; rm -rf /; echo '") == "No matches."
 
 
+async def test_entries_that_are_not_pages_are_reported(root: Path) -> None:
+    wiki = Wiki(LocalRunner())
+    await wiki.ensure()
+    assert await wiki.strays() == []
+
+    (root / "wiki").symlink_to(root)
+    (root / "notes.txt").write_text("x")
+
+    assert sorted(await wiki.strays()) == ["notes.txt", "wiki"]
+
+
 async def test_the_agent_can_read_the_wiki_with_tools(root: Path) -> None:
     wiki = Wiki(LocalRunner())
     await wiki.ensure()

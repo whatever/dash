@@ -18,7 +18,7 @@ The quickstart leaves a `MOVED TO` stub when pages merge because its store canno
 
 ### Lint, report, do not block
 
-After a dream the worker reads the pages and checks them: frontmatter present, `name` equal to the file name, a description, every `[[link]]` resolving, the index listing every page and nothing else, each page under 100 KB. Problems go in the inbox note. The commit still happens, because git already makes a bad dream recoverable and blocking would stall the next one.
+After a dream the worker reads the pages and checks them: frontmatter present, `name` equal to the file name, a description, every `[[link]]` resolving, the index listing every page and nothing else, each page under 100 KB. Anything in the repository that is not a page, such as a stray symlink or a scratch file, is reported the same way. Problems go in the inbox note. The commit still happens, because git already makes a bad dream recoverable and blocking would stall the next one.
 
 ### What a dream may do
 
