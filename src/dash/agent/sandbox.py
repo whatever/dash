@@ -10,7 +10,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-WORKSPACE = "/config/workspace"
+from dash.agent.workspace import SETUP_TIMEOUT_SECONDS, Profile, session_dir, setup_script
+
 TIMEOUT_SECONDS = 90
 OUTPUT_CHARS = 20_000
 CONNECT_TIMEOUT_SECONDS = 10
@@ -49,10 +50,13 @@ class Sandbox:
     user: str
     key: Path
 
-    def argv(self, command: str) -> list[str]:
-        """Return the ssh command line that runs the given command in the workspace."""
+    def argv(self, command: str, session: str, profile: Profile) -> list[str]:
+        """Return the ssh command line that sets up the session's workspace and runs the command."""
+        token = EXPORT_GITHUB_TOKEN if profile.github else ""
+        script = shlex.quote(setup_script(session, profile))
+        setup = f"timeout -s KILL {SETUP_TIMEOUT_SECONDS} sh -c {script}"
         remote = (
-            f"{EXPORT_GITHUB_TOKEN}cd {WORKSPACE} && "
+            f"{token}{setup} && cd {shlex.quote(session_dir(session))} && "
             f"timeout -s KILL {TIMEOUT_SECONDS} sh -c {shlex.quote(command)}"
         )
         return [
@@ -75,17 +79,18 @@ class Sandbox:
             remote,
         ]
 
-    async def run(self, command: str) -> CommandResult:
-        """Run the given command in the sandbox and return its result."""
+    async def run(self, command: str, *, session: str, profile: Profile) -> CommandResult:
+        """Run the given command in the session's workspace and return its result."""
         process = await asyncio.create_subprocess_exec(
-            *self.argv(command),
+            *self.argv(command, session, profile),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
         try:
             out, _ = await asyncio.wait_for(
-                process.communicate(), TIMEOUT_SECONDS + CONNECT_TIMEOUT_SECONDS
+                process.communicate(),
+                SETUP_TIMEOUT_SECONDS + TIMEOUT_SECONDS + CONNECT_TIMEOUT_SECONDS,
             )
         except TimeoutError:
             with contextlib.suppress(ProcessLookupError):

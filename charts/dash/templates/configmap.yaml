@@ -16,6 +16,7 @@ data:
   AGENT_TOOL_POLICY: {{ .Values.agent.toolPolicy | toJson | quote }}
   AGENT_MCP_SERVERS: {{ .Values.agent.mcpServers | toJson | quote }}
   AGENT_WEB_SEARCH: {{ ternary "on" "off" .Values.agent.webSearch | quote }}
+  WORKSPACE_PROFILES: {{ .Values.sandbox.profiles | toJson | quote }}
   {{- if .Values.sandbox.deploy }}
   SANDBOX_HOST: dash-sandbox
   {{- end }}
