@@ -11,6 +11,7 @@
 - [x] 2.2 Run dreams on their own agent with no web search and no MCP servers, limited to `run_command`, pre-approved, with no GitHub token. Verify: the model is offered only `run_command`, and a dream never uses the chat agent.
 - [x] 2.3 Fold recent conversations into the wiki, commit, lint and leave an inbox note. Verify: a scripted dream writes a page, and the note names it and the lint problems.
 - [x] 2.4 Skip the model call when nothing is new. Verify: no model request is made.
+- [x] 2.5 Fold new memories into the wiki. Verify: memories added since the last dream reach the notes block.
 
 ## 3. Operators
 

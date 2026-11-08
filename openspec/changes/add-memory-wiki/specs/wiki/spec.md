@@ -57,13 +57,27 @@ A chat turn SHALL have the wiki at `wiki/` in its workspace, read-only, and the 
 - **WHEN** the conversations since the last dream hold more than 60,000 characters
 - **THEN** the newest ones that fit are read
 
+### Requirement: A dream folds new memories into the wiki
+
+A dream SHALL also read up to 500 memories added in the same window as its conversations, of every source, newest first and within 20,000 characters, each with its id, source and date. The agent SHALL be told to treat the transcripts as the ground truth where both cover a fact.
+
+#### Scenario: A scraped item
+
+- **WHEN** `dash scrape` stored a memory since the last dream and no conversation changed
+- **THEN** the dream runs and its prompt lists that memory with its id and the source `scrape`
+
+#### Scenario: A memory an earlier dream read
+
+- **WHEN** a memory was added before the last successful dream
+- **THEN** the next dream does not list it
+
 ### Requirement: A dream with nothing new does nothing
 
-The system SHALL make no model request, and change nothing in the wiki, for a dream with no conversations updated since the last one.
+The system SHALL make no model request, and change nothing in the wiki, for a dream with no conversations updated and no memories added since the last one.
 
 #### Scenario: A quiet day
 
-- **WHEN** no conversation changed since the last dream
+- **WHEN** no conversation changed and no memory was added since the last dream
 - **THEN** the job ends as skipped
 
 ### Requirement: A dream turn is limited
@@ -105,7 +119,7 @@ The system SHALL move the last-dream time forward only when a dream finishes and
 #### Scenario: A failed commit
 
 - **WHEN** committing the wiki fails
-- **THEN** the next dream reads the same conversations again
+- **THEN** the next dream reads the same conversations and memories again
 
 ### Requirement: The wiki is off unless enabled
 

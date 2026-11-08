@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -25,6 +25,7 @@ from dash.wiki import (
     Wiki,
     lint,
     parse_pages,
+    render_notes,
     render_transcripts,
     with_wiki,
 )
@@ -106,6 +107,14 @@ def test_transcripts_are_cut_to_the_limit_keeping_the_first() -> None:
     assert "## New (1)\nuser: hello" in text
     assert "Old" not in text
     assert "x" * 4_001 not in render_transcripts([("T", "1", [("user", "x" * 9_000)])])
+
+
+
+def test_notes_name_their_source_and_are_cut_to_the_limit() -> None:
+    notes = [(1, "scrape", "2026-11-07", "a" * 60), (2, "manual", "2026-11-08", "b" * 60)]
+
+    assert render_notes(notes[:1]) == f"- memory 1 (scrape, 2026-11-07): {'a' * 60}"
+    assert render_notes(notes, limit=100) == render_notes(notes[:1])
 
 
 def test_the_wiki_is_mounted_read_only_for_chat_and_writable_for_dreams() -> None:
@@ -268,6 +277,29 @@ async def test_a_dream_folds_conversations_into_the_wiki(root: Path) -> None:
 
     assert len(model.requests) == 2
 
+
+
+
+async def test_a_dream_folds_new_memories_even_without_conversations(root: Path) -> None:
+    model = ScriptedModel(["Nothing to change."])
+    runner = LocalRunner()
+    worker, store, _, queue = dream_worker(model, shell_tools(runner), Wiki(runner))
+    await queue.finish_dream(datetime.now(UTC) - timedelta(hours=1))
+    old = await store.add_memory("The user lived in Berlin.", [0.1], source="conversation")
+    old.created_at = datetime.now(UTC) - timedelta(days=2)
+    new = await store.add_memory("A new release of hermes is out.", [0.2], source="scrape")
+
+    await worker.handle(Job("1-0", "dream", kind=DREAM))
+
+    prompt = json.dumps([str(m) for m in model.requests[0]])
+    assert f"memory {new.id} (scrape, " in prompt
+    assert "A new release of hermes is out." in prompt
+    assert "The user lived in Berlin." not in prompt
+    assert await queue.enqueue_dream()
+
+    await worker.handle(Job("2-0", "dream", kind=DREAM))
+
+    assert len(model.requests) == 1
 
 async def test_a_dream_without_a_wiki_reports_an_error() -> None:
     model = ScriptedModel()

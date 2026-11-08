@@ -300,6 +300,14 @@ class Store:
             )
             return rows.all()
 
+    async def memories_since(self, since: datetime, limit: int) -> Sequence[Memory]:
+        """Return up to `limit` memories added after `since`, newest first."""
+        async with self._session() as session:
+            rows = await session.scalars(
+                select(Memory).where(Memory.created_at > since).order_by(Memory.created_at.desc()).limit(limit)
+            )
+            return rows.all()
+
     async def search_memories(
         self, embedding: Sequence[float], limit: int
     ) -> list[tuple[Memory, float]]:

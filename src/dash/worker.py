@@ -45,6 +45,7 @@ from dash.wiki import (
     WIKI_HINT,
     Wiki,
     lint,
+    render_notes,
     render_transcripts,
 )
 
@@ -57,6 +58,7 @@ STOP_POLL_SECONDS = 0.5
 SWEEP_SECONDS = 60
 DREAM_LOOKBACK_DAYS = 7
 DREAM_CONVERSATIONS = 100
+DREAM_MEMORIES = 500
 
 
 def record(log: list[dict[str, Any]], kind: str, data: Mapping[str, Any]) -> None:
@@ -167,7 +169,7 @@ class Worker:
         return "\n\n".join(part for part in parts if part) or None
 
     async def handle_dream(self, job: Job) -> None:
-        """Fold the conversations since the last dream into the wiki, commit it and report."""
+        """Fold the conversations and memories since the last dream into the wiki, commit it and report."""
         if self.wiki is None or self.dream_agent is None:
             await self.queue.emit(job.job_id, "error", message="The wiki is off.")
             await self.queue.finish_dream(None)
@@ -179,7 +181,8 @@ class Worker:
             for c in await self.store.conversations(DREAM_CONVERSATIONS)
             if c.updated_at > since and not c.title.startswith(DREAM_TITLE)
         ]
-        if not recent:
+        new_memories = await self.store.memories_since(since, DREAM_MEMORIES)
+        if not recent and not new_memories:
             await self.queue.emit(job.job_id, "done", skipped=True)
             await self.queue.finish_dream(now)
             return
@@ -189,9 +192,10 @@ class Worker:
                 for c in sorted(recent, key=lambda c: c.updated_at, reverse=True)
             ]
         )
+        notes = render_notes([(m.id, m.source, m.created_at, m.content) for m in new_memories])
         await self.wiki.ensure()
         dream = await self.store.create_conversation(f"{DREAM_TITLE} {now:%Y-%m-%d %H:%M}")
-        task = DREAM_TASK.format(today=f"{now:%Y-%m-%d}", transcripts=transcripts)
+        task = DREAM_TASK.format(today=f"{now:%Y-%m-%d}", transcripts=transcripts, notes=notes)
         await self.store.add_message(dream.id, "user", task)
         ended = await self.run_turn(
             job,
@@ -204,14 +208,22 @@ class Worker:
         if ended is None or ended[1].stopped or ended[1].waiting:
             await self.queue.finish_dream(None)
             return
-        await self.report_dream(self.wiki, job, dream.id, len(recent), now)
+        await self.report_dream(self.wiki, job, dream.id, len(recent), len(new_memories), now)
 
     async def report_dream(
-        self, wiki: Wiki, job: Job, conversation_id: uuid.UUID, read: int, now: datetime
+        self, wiki: Wiki, job: Job, conversation_id: uuid.UUID, read_convs: int, read_mems: int, now: datetime
     ) -> None:
         """Commit the wiki, lint it, leave a note in the inbox and record the dream as done."""
+        sources = " and ".join(
+            part
+            for part in (
+                f"{read_convs} conversations" if read_convs else "",
+                f"{read_mems} memories" if read_mems else "",
+            )
+            if part
+        )
         try:
-            stat = await wiki.commit(f"dream {now:%Y-%m-%d %H:%M}: {read} conversations")
+            stat = await wiki.commit(f"dream {now:%Y-%m-%d %H:%M}: {sources}")
             problems = [
                 *lint(await wiki.pages()),
                 *(f"unexpected entry {name}" for name in await wiki.strays()),
@@ -232,7 +244,7 @@ class Worker:
             if part
         )
         title = (
-            f"Dream: updated the wiki from {read} conversations" if stat else "Dream: no changes"
+            f"Dream: updated the wiki from {sources}" if stat else "Dream: no changes"
         )
         await self.inbox.add(
             kind=MESSAGE,
