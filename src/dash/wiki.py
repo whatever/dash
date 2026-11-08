@@ -81,6 +81,7 @@ DREAM_INSTRUCTIONS = (
 )
 
 DREAM_TASK = """Fold what these recent conversations teach about the person into the wiki.
+Today is {today}. Use it for every `updated` date.
 
 1. Read wiki/WIKI.md and wiki/_index.md, then any page a transcript touches.
 2. Add durable facts, preferences, people, projects and decisions to the right page, or a new page.

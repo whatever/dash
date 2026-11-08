@@ -255,6 +255,7 @@ async def test_a_dream_folds_conversations_into_the_wiki(root: Path) -> None:
 
     prompt = json.dumps([str(m) for m in model.requests[0]])
     assert "I moved to Oakland last week" in prompt
+    assert f"Today is {datetime.now(UTC):%Y-%m-%d}." in prompt
     assert sorted(t.name for t in model.infos[0].function_tools) == ["run_command"]
     assert any(c.title.startswith("Dream") for c in await store.conversations())
     assert [r.kind for r in inbox.rows] == [MESSAGE]

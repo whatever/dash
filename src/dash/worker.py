@@ -191,7 +191,7 @@ class Worker:
         )
         await self.wiki.ensure()
         dream = await self.store.create_conversation(f"{DREAM_TITLE} {now:%Y-%m-%d %H:%M}")
-        task = DREAM_TASK.format(transcripts=transcripts)
+        task = DREAM_TASK.format(today=f"{now:%Y-%m-%d}", transcripts=transcripts)
         await self.store.add_message(dream.id, "user", task)
         ended = await self.run_turn(
             job,
