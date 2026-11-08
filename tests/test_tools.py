@@ -18,6 +18,7 @@ from dash.agent.policy import ToolPolicy
 from dash.agent.sandbox import Sandbox, private_key_copy
 from dash.agent.tools import MemoryHit, memory_tools, sandbox_tools, web_tools
 from dash.agent.web import Fetcher, RefusedError, Resolve, is_public
+from dash.agent.workspace import Profile, session_dir
 from dash.db import Store
 from dash.inbox.db import InboxStore
 from dash.queue import Job, Queue
@@ -25,6 +26,8 @@ from dash.worker import Worker
 from tests.fakes import FakeEmbedder, FakeExtractor, FakeInboxStore, FakeStore, ScriptedModel
 
 SANDBOX = Sandbox("dash-sandbox", 2222, "agent", Path("/keys/id"))
+SESSION = "0f5c1d3e-6a7b-4c8d-9e0f-123456789abc"
+PROFILE = Profile()
 
 Tool = Callable[[str], Awaitable[Any]]
 
@@ -69,32 +72,40 @@ def spawn(monkeypatch: pytest.MonkeyPatch, process: FakeProcess) -> list[tuple[s
 
 
 def test_ssh_command_line() -> None:
-    argv = SANDBOX.argv("git status; echo 'done'")
+    argv = SANDBOX.argv("git status; echo 'done'", SESSION, PROFILE)
 
     assert argv[0] == "ssh"
     assert argv[1:5] == ["-i", "/keys/id", "-p", "2222"]
     assert "BatchMode=yes" in argv
     assert "UserKnownHostsFile=/keys/known_hosts" in argv
     assert argv[-2] == "agent@dash-sandbox"
-    assert argv[-1] == (
-        sandbox_module.EXPORT_GITHUB_TOKEN
-        + "cd /config/workspace && timeout -s KILL 90 sh -c 'git status; echo '\"'\"'done'\"'\"''"
+    assert argv[-1].startswith(sandbox_module.EXPORT_GITHUB_TOKEN + "timeout -s KILL 120 sh -c ")
+    assert argv[-1].endswith(
+        f" && cd {session_dir(SESSION)} && "
+        "timeout -s KILL 90 sh -c 'git status; echo '\"'\"'done'\"'\"''"
     )
 
 
 def test_the_github_token_is_exported_from_its_file() -> None:
-    remote = SANDBOX.argv("gh auth status")[-1]
+    remote = SANDBOX.argv("gh auth status", SESSION, PROFILE)[-1]
 
     assert remote.startswith(
         '[ -r /run/secrets/github/token ] && export GITHUB_TOKEN="$(cat /run/secrets/github/token)"'
-        ' GH_TOKEN="$(cat /run/secrets/github/token)"; cd /config/workspace'
+        ' GH_TOKEN="$(cat /run/secrets/github/token)"; timeout'
     )
+
+
+def test_a_profile_without_github_exports_no_token() -> None:
+    remote = SANDBOX.argv("ls", SESSION, Profile(github=False))[-1]
+
+    assert "GITHUB_TOKEN" not in remote
+    assert remote.startswith("timeout -s KILL 120 sh -c ")
 
 
 async def test_a_command_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = spawn(monkeypatch, FakeProcess(b"git version 2.47.1\n", 0))
 
-    result = await SANDBOX.run("git --version")
+    result = await SANDBOX.run("git --version", session=SESSION, profile=PROFILE)
 
     assert (result.exit_code, result.output) == (0, "git version 2.47.1\n")
     assert not result.output_cut
@@ -105,7 +116,7 @@ async def test_a_command_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_a_failing_command_returns_its_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
     spawn(monkeypatch, FakeProcess(b"no such file\n", 2))
 
-    result = await SANDBOX.run("cat nope")
+    result = await SANDBOX.run("cat nope", session=SESSION, profile=PROFILE)
 
     assert (result.exit_code, result.output) == (2, "no such file\n")
 
@@ -113,7 +124,7 @@ async def test_a_failing_command_returns_its_exit_code(monkeypatch: pytest.Monke
 async def test_long_output_is_cut(monkeypatch: pytest.MonkeyPatch) -> None:
     spawn(monkeypatch, FakeProcess(b"x" * 50_000, 0))
 
-    result = await SANDBOX.run("yes x")
+    result = await SANDBOX.run("yes x", session=SESSION, profile=PROFILE)
 
     assert len(result.output) == 20_000
     assert result.output_cut
@@ -122,16 +133,17 @@ async def test_long_output_is_cut(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_a_remote_timeout_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     spawn(monkeypatch, FakeProcess(b"", 137))
 
-    assert (await SANDBOX.run("sleep 999")).timed_out
+    assert (await SANDBOX.run("sleep 999", session=SESSION, profile=PROFILE)).timed_out
 
 
 async def test_a_hung_connection_is_killed(monkeypatch: pytest.MonkeyPatch) -> None:
     process = FakeProcess(b"", 0, hang=True)
     spawn(monkeypatch, process)
     monkeypatch.setattr(sandbox_module, "TIMEOUT_SECONDS", 0)
+    monkeypatch.setattr(sandbox_module, "SETUP_TIMEOUT_SECONDS", 0)
     monkeypatch.setattr(sandbox_module, "CONNECT_TIMEOUT_SECONDS", 0.05)
 
-    result = await SANDBOX.run("sleep 999")
+    result = await SANDBOX.run("sleep 999", session=SESSION, profile=PROFILE)
 
     assert result.timed_out
     assert result.exit_code is None
@@ -335,7 +347,7 @@ async def test_a_tool_call_runs_end_to_end(monkeypatch: pytest.MonkeyPatch) -> N
         [{0: DeltaToolCall(name="run_command", json_args='{"command": "git --version"}')}],
         ["It is 2.47.1."],
     )
-    engine = model.engine([sandbox_tools(SANDBOX)])
+    engine = model.engine([sandbox_tools(SANDBOX, {})])
 
     assert await offered(model, engine) == ["run_command"]
     returned = [str(p) for m in model.requests[-1] for p in m.parts if "git version" in str(p)]
@@ -357,7 +369,7 @@ async def test_a_printed_github_token_is_masked(monkeypatch: pytest.MonkeyPatch)
         FakeProcess(f"GITHUB_TOKEN={token}\nremote https://x:{pat}@github.com\n".encode(), 0),
     )
 
-    result = await SANDBOX.run("env")
+    result = await SANDBOX.run("env", session=SESSION, profile=PROFILE)
 
     assert token not in result.output
     assert pat not in result.output

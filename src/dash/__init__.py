@@ -123,6 +123,7 @@ async def _worker() -> None:
     from dash.agent.sandbox import Sandbox, private_key_copy
     from dash.agent.tools import inbox_tools, memory_tools, sandbox_tools, web_tools
     from dash.agent.web import Fetcher
+    from dash.agent.workspace import parse_profiles
     from dash.db import Store
     from dash.inbox.db import InboxStore
     from dash.memory import Bedrock
@@ -155,7 +156,7 @@ async def _worker() -> None:
             sandbox = Sandbox(
                 settings.sandbox_host, settings.sandbox_port, settings.sandbox_user, key
             )
-            toolsets.append(sandbox_tools(sandbox))
+            toolsets.append(sandbox_tools(sandbox, parse_profiles(settings.workspace_profiles)))
         agent = build_agent(
             model,
             toolsets=toolsets,

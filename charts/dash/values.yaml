@@ -65,7 +65,12 @@ agent:
   webSearch: true
 
 # The ssh sandbox the agent runs commands in. Only it holds the Nango and GitHub tokens.
+# profiles: what each kind of session gets in its own workspace, /config/workspace/sessions/<id>.
+#   {default: {github: true, mounts: [{kind: git, source: owner/repo, ref: main, path: repos/x, mode: ro}]}}
+#   A shared mount is {kind: shared, source: <dir under /config/shared>, path, mode}. Modes are
+#   advisory: the sandbox user has sudo, so they stop accidents, not a determined agent.
 sandbox:
+  profiles: {}
   deploy: true
   image: lscr.io/linuxserver/openssh-server:10.2_p1-r0-ls226
   storage: 10Gi

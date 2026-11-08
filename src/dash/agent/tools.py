@@ -1,5 +1,6 @@
 """The agent's own tools: sandbox commands, web pages, memories and inbox messages."""
 
+from collections.abc import Mapping
 from typing import Annotated
 
 import httpx
@@ -10,6 +11,7 @@ from pydantic_ai.toolsets import FunctionToolset
 from dash.agent.deps import TurnDeps
 from dash.agent.sandbox import CommandResult, Sandbox
 from dash.agent.web import Fetcher, RefusedError
+from dash.agent.workspace import Profile
 from dash.db import Store
 from dash.inbox import MESSAGE
 from dash.inbox.db import InboxStore
@@ -25,17 +27,18 @@ class MemoryHit(BaseModel):
     distance: float
 
 
-def sandbox_tools(sandbox: Sandbox) -> FunctionToolset[TurnDeps]:
-    """Return the `run_command` tool for the given sandbox."""
+def sandbox_tools(sandbox: Sandbox, profiles: Mapping[str, Profile]) -> FunctionToolset[TurnDeps]:
+    """Return the `run_command` tool for the given sandbox and workspace profiles."""
     tools = FunctionToolset[TurnDeps]()
 
-    @tools.tool_plain
-    async def run_command(command: str) -> CommandResult:
-        """Run a shell command in your sandbox's workspace and return its exit code and output.
+    @tools.tool
+    async def run_command(ctx: RunContext[TurnDeps], command: str) -> CommandResult:
+        """Run a shell command in this conversation's workspace and return its exit code and output.
 
         The sandbox has git, gh, python3, ripgrep and fd. Commands stop after 90 seconds.
         """
-        return await sandbox.run(command)
+        profile = profiles.get(ctx.deps.profile, Profile())
+        return await sandbox.run(command, session=str(ctx.deps.conversation_id), profile=profile)
 
     return tools
 
