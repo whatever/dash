@@ -6,7 +6,7 @@
 
 ## 2. Spans
 
-- [ ] 2.1 Put the conversation id, job id and job kind on every span of a job. Verify: test reads the attributes from an in-memory exporter.
+- [ ] 2.1 Seed the agent conversation with dash's conversation id, and put it as `session.id` with the job id and kind on every span of a job. Verify: test reads the attributes from an in-memory exporter.
 - [ ] 2.2 Span chat turns and tool calls (Pydantic AI instrumentation on the agent engine, one manual span on hermes). Verify: a turn with a tool call yields a turn span with a child tool span.
 - [ ] 2.3 Span embeddings, memory fact extraction and source-update extraction with model name and token usage. Verify: a failing extractor yields an error span and the job still finishes.
 - [ ] 2.4 Carry `traceparent` in the queued job and the inbox row. Verify: a request, its job and an approval resume share one trace id.

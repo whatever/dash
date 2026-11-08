@@ -18,9 +18,15 @@ With no `OTEL_EXPORTER_OTLP_ENDPOINT` the module installs no provider, so spans 
 - Memory and source model calls go through boto3 or `httpx`, which Pydantic AI does not cover. Each gets a manual span with `gen_ai.*` attributes. Their content is captured only under the same flag.
 - Approvals span turns: the turn stops, and a resume job runs later. The inbox row stores the trace context, and the resume job continues that trace, so an approval round trip reads as one trace.
 
-### Session grouping
+### Session grouping, and why no per-backend adapters
 
-Every span in a job carries the conversation id as `gen_ai.conversation.id` and as `session.id`, plus `dash.job.id` and `dash.job.kind`. Phoenix groups by `session.id`; Langfuse by `langfuse.session.id`, which the collector can copy from it. Which attribute each backend reads for sessions and token counts must be checked against a running instance before the collector config is written. This is the main open item.
+Every span in a job carries the conversation id as `gen_ai.conversation.id` and as `session.id`, plus `dash.job.id` and `dash.job.kind`. Both backends read that without translation:
+
+- Langfuse reads a session from `langfuse.session.id` or `session.id` ([Langfuse OpenTelemetry docs](https://langfuse.com/integrations/native/opentelemetry)) and maps `gen_ai.*` attributes onto its data model.
+- Phoenix treats OpenInference as native and lists `session.id` among its common attributes. From arize-phoenix 15.10.0 it converts `gen_ai.*` spans to OpenInference on arrival, keeping the originals and filling only gaps ([Phoenix release notes, 2026-05-15](https://arize.com/docs/phoenix/release-notes/05-2026/05-15-2026-otel-semconv-conversion)).
+- Pydantic AI already emits `gen_ai.conversation.id` on the run span, but dash builds its `Conversation` without an id, so the value would be Pydantic AI's own. Seeding `Conversation.conversation_id` with dash's conversation id makes it the same value everywhere. `session.id` is added by a span processor that copies it from the baggage Pydantic AI sets.
+
+So dash exports one set of attributes. If a backend version lags, the collector's `transform` processor can copy or rename an attribute; that is configuration in the collector, not code in dash. Minimum versions to run: Langfuse 3.22 (self-hosted OTLP) and Phoenix 15.10.
 
 ### Trace context through the queue
 
@@ -34,9 +40,9 @@ Prompts and completions hold personal data and tool output. `TELEMETRY_CAPTURE_C
 
 - A slow or down collector must not slow or fail a turn. The batch processor exports off the request path and drops spans when its queue is full.
 - Content capture on a shared backend puts conversation text in a second store. The flag is per deployment and the spec requires it off by default.
-- Attribute conventions for `gen_ai.*` are still moving. Pin the SDK and check the backend mapping when bumping Pydantic AI.
+- Attribute conventions for `gen_ai.*` are still moving. `InstrumentationSettings` takes a `version` (2 to 6) for the convention it emits. Pin it, and check the backend mapping when bumping Pydantic AI.
 
 ## Open Questions
 
-- Do Phoenix and Langfuse need different attribute names for sessions and costs on the pinned versions? Verify before the collector config lands.
+- Do token counts and costs show in each backend from `gen_ai.usage.*` alone? Check on a running Phoenix and Langfuse before the collector config lands; a `transform` rule is the fallback.
 - Should dash also export metrics (queue depth, job duration)? Out of scope here; traces first.
