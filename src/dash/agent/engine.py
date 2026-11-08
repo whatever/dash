@@ -23,7 +23,6 @@ from pydantic_ai import (
     ThinkingPart,
     ThinkingPartDelta,
     ToolCallPart,
-    ToolReturnPart,
     UsageLimits,
 )
 from pydantic_ai.capabilities import AgentCapability, WebSearch
@@ -52,6 +51,7 @@ TOOL_STATUS = {
     "failed": "failed",
     "denied": "denied",
     "interrupted": "interrupted",
+    "retried": "failed",
 }
 Output = str | DeferredToolRequests
 
@@ -240,7 +240,7 @@ def _deltas(event: AgentStreamEvent, parts: StreamedParts) -> list[Delta]:
             return [Delta("tool", data=data)]
         case FunctionToolResultEvent(part=done):
             parts.seen.clear()
-            status = TOOL_STATUS[done.outcome] if isinstance(done, ToolReturnPart) else "failed"
+            status = TOOL_STATUS[done.outcome]
             data = {"tool": done.tool_name, "toolCallId": done.tool_call_id, "status": status}
             return [Delta("tool", data=data)]
         case _:

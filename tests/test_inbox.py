@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
-    RetryPromptPart,
     ToolReturnPart,
     UserPromptPart,
 )
@@ -394,7 +393,7 @@ async def test_an_oversized_message_is_sent_back_to_the_model() -> None:
         for m in r.model.requests[-1]
         if isinstance(m, ModelRequest)
         for p in m.parts
-        if isinstance(p, RetryPromptPart)
+        if isinstance(p, ToolReturnPart) and p.outcome == "retried"
     ]
     assert retried
 
