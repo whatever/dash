@@ -2,7 +2,8 @@
 
 `dash:jobs` holds one entry per job, read by the `workers` consumer group. A job's
 `kind` is `chat` (answer a conversation's last user turn), `update` (a
-real-world item from `dash scrape` to remember) or `resume` (continue a turn
+real-world item from `dash scrape` to remember), `dream` (fold recent conversations into the
+wiki) or `resume` (continue a turn
 whose approvals were all answered).
 Each job also gets its own `dash:events:<job>` stream. The worker appends deltas
 there and the API replays it to the browser over SSE, so a page reload mid-reply
@@ -15,6 +16,7 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol, cast
 
 from redis.asyncio import Redis
@@ -32,6 +34,10 @@ SEEN_TTL_SECONDS = 30 * 24 * 3600
 CHAT = "chat"
 UPDATE = "update"
 RESUME = "resume"
+DREAM = "dream"
+DREAM_QUEUED = "dash:dream:queued"
+DREAM_LAST = "dash:dream:last"
+DREAM_QUEUED_SECONDS = 3600
 
 
 def events_key(job_id: str) -> str:
@@ -106,6 +112,25 @@ class Queue:
             {"job_id": job_id, "kind": RESUME, "conversation_id": conversation_id, "data": data},
         )
         return job_id
+
+    async def enqueue_dream(self) -> str | None:
+        """Queue a dream job. Return None if one is already waiting or running."""
+        job_id = uuid.uuid4().hex
+        if not await self.redis.set(DREAM_QUEUED, job_id, nx=True, ex=DREAM_QUEUED_SECONDS):
+            return None
+        await self.redis.xadd(JOBS, {"job_id": job_id, "kind": DREAM})
+        return job_id
+
+    async def dream_since(self) -> datetime | None:
+        """Return when the last dream finished, if one has."""
+        value = cast("str | None", await self.redis.get(DREAM_LAST))
+        return datetime.fromisoformat(value) if value else None
+
+    async def finish_dream(self, when: datetime | None) -> None:
+        """Allow the next dream, and record `when` as the time its conversations were read up to."""
+        if when is not None:
+            await self.redis.set(DREAM_LAST, when.isoformat())
+        await self.redis.delete(DREAM_QUEUED)
 
     async def resume_job(self, turn_job_id: str) -> str | None:
         """Return the id of the job that continues the given turn, if one was queued."""

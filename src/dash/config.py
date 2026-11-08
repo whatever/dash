@@ -43,6 +43,7 @@ class Settings:
     sandbox_user: str
     sandbox_key_path: str
     workspace_profiles: str
+    wiki_enabled: bool
     nango_url: str
     nango_public_url: str
     nango_connect_url: str
@@ -71,6 +72,7 @@ class Settings:
             sandbox_user=_env("SANDBOX_USER", "agent"),
             sandbox_key_path=_env("SANDBOX_KEY_PATH", "/run/secrets/sandbox/id_ed25519"),
             workspace_profiles=_env("WORKSPACE_PROFILES", ""),
+            wiki_enabled=_env("WIKI", "off") == "on",
             nango_url=_env("NANGO_URL", "http://localhost:3003").rstrip("/"),
             # Browser-facing addresses. Empty means "same as NANGO_URL".
             nango_public_url=_env("NANGO_PUBLIC_URL", "").rstrip("/"),

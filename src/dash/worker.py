@@ -3,6 +3,7 @@
 `chat` jobs recall memories, run an agent turn, stream it and store new memories.
 `resume` jobs continue a turn once a person has answered every approval it waited on.
 `update` jobs (from `dash scrape`) store a real-world item as a memory.
+`dream` jobs (from `dash dream`) fold recent conversations into the wiki.
 """
 
 import asyncio
@@ -22,8 +23,9 @@ from dash.agent import Delta, Turn, history
 from dash.agent.answers import answers
 from dash.agent.deps import TurnDeps
 from dash.agent.engine import OnDelta
+from dash.agent.workspace import DEFAULT_PROFILE
 from dash.db import Store
-from dash.inbox import APPROVAL, APPROVAL_HOURS
+from dash.inbox import APPROVAL, APPROVAL_HOURS, MESSAGE
 from dash.inbox.db import InboxStore
 from dash.memory import (
     DUPLICATE_DISTANCE,
@@ -32,8 +34,19 @@ from dash.memory import (
     Extractor,
     system_prompt,
 )
-from dash.queue import RESUME, UPDATE, Job, Queue
+from dash.queue import DREAM, RESUME, UPDATE, Job, Queue
 from dash.sources.common import Item
+from dash.wiki import (
+    DREAM_INSTRUCTIONS,
+    DREAM_PROFILE,
+    DREAM_TASK,
+    DREAM_TITLE,
+    DREAM_TOOLS,
+    WIKI_HINT,
+    Wiki,
+    lint,
+    render_transcripts,
+)
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +55,8 @@ FLUSH_CHARS = 48
 RETRY_SECONDS = 2
 STOP_POLL_SECONDS = 0.5
 SWEEP_SECONDS = 60
+DREAM_LOOKBACK_DAYS = 7
+DREAM_CONVERSATIONS = 100
 
 
 def record(log: list[dict[str, Any]], kind: str, data: Mapping[str, Any]) -> None:
@@ -77,6 +92,7 @@ class Worker:
         embedder: Embedder,
         extractor: Extractor,
         top_k: int,
+        wiki: Wiki | None = None,
     ) -> None:
         self.store = store
         self.inbox = inbox
@@ -85,6 +101,7 @@ class Worker:
         self.embedder = embedder
         self.extractor = extractor
         self.top_k = top_k
+        self.wiki = wiki
         self.name = f"{socket.gethostname()}-{uuid.uuid4().hex[:6]}"
 
     async def recall(self, text: str) -> list[str]:
@@ -122,6 +139,8 @@ class Worker:
             await self.handle_update(job)
         elif job.kind == RESUME:
             await self.handle_resume(job)
+        elif job.kind == DREAM:
+            await self.handle_dream(job)
         else:
             await self.handle_chat(job)
 
@@ -139,6 +158,85 @@ class Worker:
         )
         await self.queue.emit(job.job_id, "done", stored=True)
         log.info("stored update from %s: %s", item.source, item.title)
+
+    def chat_instructions(self, memories: list[str]) -> str | None:
+        """Return the instructions for a chat turn: the memories and where the wiki is."""
+        parts = [system_prompt(memories), WIKI_HINT if self.wiki else None]
+        return "\n\n".join(part for part in parts if part) or None
+
+    async def handle_dream(self, job: Job) -> None:
+        """Fold the conversations since the last dream into the wiki, commit it and report."""
+        if self.wiki is None:
+            await self.queue.emit(job.job_id, "error", message="The wiki is off.")
+            await self.queue.finish_dream(None)
+            return
+        now = datetime.now(UTC)
+        since = await self.queue.dream_since() or now - timedelta(days=DREAM_LOOKBACK_DAYS)
+        recent = [
+            c
+            for c in await self.store.conversations(DREAM_CONVERSATIONS)
+            if c.updated_at > since and not c.title.startswith(DREAM_TITLE)
+        ]
+        if not recent:
+            await self.queue.emit(job.job_id, "done", skipped=True)
+            await self.queue.finish_dream(now)
+            return
+        transcripts = render_transcripts(
+            [
+                (c.title, str(c.id), [(m.role, m.content) for m in await self.store.messages(c.id)])
+                for c in sorted(recent, key=lambda c: c.updated_at, reverse=True)
+            ]
+        )
+        await self.wiki.ensure()
+        dream = await self.store.create_conversation(f"{DREAM_TITLE} {now:%Y-%m-%d %H:%M}")
+        task = DREAM_TASK.format(transcripts=transcripts)
+        await self.store.add_message(dream.id, "user", task)
+        ended = await self.run_turn(
+            job,
+            dream.id,
+            history.seed([]),
+            task,
+            instructions=DREAM_INSTRUCTIONS,
+            profile=DREAM_PROFILE,
+        )
+        if ended is None or ended[1].stopped or ended[1].waiting:
+            await self.queue.finish_dream(None)
+            return
+        await self.report_dream(self.wiki, job, dream.id, len(recent), now)
+
+    async def report_dream(
+        self, wiki: Wiki, job: Job, conversation_id: uuid.UUID, read: int, now: datetime
+    ) -> None:
+        """Commit the wiki, lint it, leave a note in the inbox and record the dream as done."""
+        try:
+            stat = await wiki.commit(f"dream {now:%Y-%m-%d %H:%M}: {read} conversations")
+            problems = lint(await wiki.pages())
+        except RuntimeError:
+            log.exception("wiki commit failed")
+            await self.queue.finish_dream(None)
+            return
+        await self.queue.finish_dream(now)
+        if not stat and not problems:
+            return
+        body = "\n\n".join(
+            part
+            for part in (
+                stat,
+                "Problems:\n" + "\n".join(f"- {p}" for p in problems) if problems else "",
+            )
+            if part
+        )
+        title = (
+            f"Dream: updated the wiki from {read} conversations" if stat else "Dream: no changes"
+        )
+        await self.inbox.add(
+            kind=MESSAGE,
+            title=title,
+            body=body,
+            data={"problems": problems},
+            conversation_id=conversation_id,
+            job_id=job.job_id,
+        )
 
     async def conversation(
         self, conversation_id: uuid.UUID, earlier: list[tuple[str, str]]
@@ -216,6 +314,8 @@ class Worker:
         *,
         memories: list[str] | None = None,
         decided: DeferredToolResults | None = None,
+        instructions: str | None = None,
+        profile: str = DEFAULT_PROFILE,
     ) -> tuple[str, Turn] | None:
         """Run, stream and store a turn. Return its reply and how it ended, or None if it failed."""
         # Everything the UI is shown, in order, so the reply can be rebuilt after a reload.
@@ -252,7 +352,14 @@ class Worker:
                 await emit(delta.kind, **delta.data)
 
         approved = frozenset(r.tool for r in await self.inbox.rules())
-        deps = TurnDeps(conversation_id, job.job_id, approved)
+        dreaming = profile == DREAM_PROFILE
+        deps = TurnDeps(
+            conversation_id,
+            job.job_id,
+            approved | DREAM_TOOLS if dreaming else approved,
+            profile,
+            DREAM_TOOLS if dreaming else None,
+        )
         cancel = CancellationToken()
         watcher = asyncio.create_task(self.watch_stop(job.job_id, cancel))
         try:
@@ -260,7 +367,7 @@ class Worker:
                 conversation,
                 prompt,
                 deps=deps,
-                instructions=system_prompt(memories or []),
+                instructions=instructions or self.chat_instructions(memories or []),
                 on_delta=on_delta,
                 cancel=cancel,
                 answers=decided,
