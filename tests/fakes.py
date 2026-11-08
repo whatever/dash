@@ -94,6 +94,10 @@ class FakeStore:
     async def memories(self, limit: int = 200) -> list[Memory]:
         return self.mems[:limit]
 
+    async def memories_since(self, since: datetime, limit: int = 500) -> list[Memory]:
+        """Return memories added after `since`, oldest first, up to `limit`."""
+        return [m for m in self.mems if m.created_at > since][:limit]
+
     async def search_memories(
         self, embedding: Sequence[float], limit: int
     ) -> list[tuple[Memory, float]]:

@@ -6,9 +6,9 @@ Memories are one embedded sentence each. They keep no source, cannot record that
 
 - Add a wiki: flat markdown pages with frontmatter, an index and `[[links]]`, in a git repository in the sandbox, described by a `WIKI.md` that dash writes into it.
 - Chat sessions get the wiki read-only at `wiki/`, plus `read_wiki` and `search_wiki` tools that need no approval, and are told to read the index for questions about the person.
-- Add a `dream` job and a `dash dream` command, run nightly by a CronJob. It reads the conversations since the last dream and has a separate agent update the wiki, with no tool but `run_command`, no web search, no MCP servers, no GitHub token, and only the wiki mounted.
+- Add a `dream` job and a `dash dream` command, run nightly by a CronJob. It reads the conversations and memories since the last dream and has a separate agent update the wiki, with no tool but `run_command`, no web search, no MCP servers, no GitHub token, and only the wiki mounted.
 - Each dream leaves its trace: a conversation, one git commit, and an inbox note with the diffstat and any format problems.
-- Off by default (`WIKI=on`, chart `wiki.enabled`). The existing pgvector memories are unchanged.
+- Off by default (`WIKI=on`, chart `wiki.enabled`). The pgvector memories still drive recall; the dream reads new ones as notes to fold in.
 
 ## Capabilities
 
