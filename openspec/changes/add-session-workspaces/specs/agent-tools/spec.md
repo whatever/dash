@@ -59,6 +59,11 @@ The system SHALL read named workspace profiles from `WORKSPACE_PROFILES`, a JSON
 - **WHEN** a profile mounts the shared directory `wiki` read-write at `wiki` and a session writes `wiki/a.md`
 - **THEN** another session that mounts `wiki` sees `a.md`
 
+#### Scenario: Commands that start together
+
+- **WHEN** the agent issues several commands at once as the first commands of a conversation
+- **THEN** the workspace and each mount are set up once, and no mount is created inside another
+
 #### Scenario: A shared directory, read-only
 
 - **WHEN** a profile mounts the shared directory `wiki` read-only and the agent edits `wiki/a.md` with a plain write
