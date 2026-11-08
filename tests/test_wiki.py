@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -12,6 +13,7 @@ from pydantic_ai.toolsets import FunctionToolset
 from dash import wiki as wiki_module
 from dash.agent.deps import TurnDeps
 from dash.agent.sandbox import CommandResult
+from dash.agent.tools import wiki_tools
 from dash.agent.workspace import DEFAULT_PROFILE, Profile
 from dash.db import Store
 from dash.inbox import MESSAGE
@@ -131,6 +133,30 @@ async def test_the_wiki_is_seeded_once_and_changes_are_committed(root: Path) -> 
     assert "CONFLICT" in (root / "WIKI.md").read_text()
 
 
+async def test_pages_can_be_read_and_searched(root: Path) -> None:
+    wiki = Wiki(LocalRunner())
+    await wiki.ensure()
+    (root / "oakland.md").write_text(PAGE)
+
+    assert await wiki.read("oakland") == PAGE
+    assert (await wiki.read("_index")).startswith("# Index")
+    assert await wiki.read("nope") == "No page named 'nope'."
+    assert "names use letters" in await wiki.read("../etc/passwd")
+    assert "oakland.md:5:Lives in Oakland." in await wiki.search("LIVES IN")
+    assert await wiki.search("zebra") == "No matches."
+    assert await wiki.search("a'; rm -rf /; echo '") == "No matches."
+
+
+async def test_the_agent_can_read_the_wiki_with_tools(root: Path) -> None:
+    wiki = Wiki(LocalRunner())
+    await wiki.ensure()
+    tools = wiki_tools(wiki)
+
+    assert sorted(tools.tools) == ["read_wiki", "search_wiki"]
+    assert (await tool(tools, "read_wiki")()).startswith("# Index")
+    assert await tool(tools, "search_wiki")("zebra") == "No matches."
+
+
 async def test_a_failing_command_raises(root: Path) -> None:
     class Failing:
         async def run(self, command: str, *, session: str, profile: Profile) -> CommandResult:
@@ -152,6 +178,10 @@ async def test_only_one_dream_is_queued_at_a_time() -> None:
     assert await queue.enqueue_dream()
 
 
+def tool(toolset: FunctionToolset[TurnDeps], name: str) -> Callable[..., Awaitable[str]]:
+    return cast("Callable[..., Awaitable[str]]", toolset.tools[name].function)
+
+
 def dream_worker(
     model: ScriptedModel, tools: FunctionToolset[TurnDeps], wiki: Wiki | None
 ) -> tuple[Worker, FakeStore, FakeInboxStore, Queue]:
@@ -161,7 +191,8 @@ def dream_worker(
         store=cast("Store", store),
         inbox=cast("InboxStore", inbox),
         queue=queue,
-        agent=model.engine([tools]),
+        agent=ScriptedModel().engine([]),
+        dream_agent=model.engine([tools]),
         embedder=FakeEmbedder(),
         extractor=FakeExtractor([]),
         top_k=8,

@@ -93,6 +93,7 @@ class Worker:
         extractor: Extractor,
         top_k: int,
         wiki: Wiki | None = None,
+        dream_agent: AgentRunner | None = None,
     ) -> None:
         self.store = store
         self.inbox = inbox
@@ -102,6 +103,7 @@ class Worker:
         self.extractor = extractor
         self.top_k = top_k
         self.wiki = wiki
+        self.dream_agent = dream_agent
         self.name = f"{socket.gethostname()}-{uuid.uuid4().hex[:6]}"
 
     async def recall(self, text: str) -> list[str]:
@@ -166,7 +168,7 @@ class Worker:
 
     async def handle_dream(self, job: Job) -> None:
         """Fold the conversations since the last dream into the wiki, commit it and report."""
-        if self.wiki is None:
+        if self.wiki is None or self.dream_agent is None:
             await self.queue.emit(job.job_id, "error", message="The wiki is off.")
             await self.queue.finish_dream(None)
             return
@@ -363,7 +365,7 @@ class Worker:
         cancel = CancellationToken()
         watcher = asyncio.create_task(self.watch_stop(job.job_id, cancel))
         try:
-            turn = await self.agent.run(
+            turn = await (self.dream_agent if dreaming and self.dream_agent else self.agent).run(
                 conversation,
                 prompt,
                 deps=deps,

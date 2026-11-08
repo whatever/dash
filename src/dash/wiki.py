@@ -96,10 +96,14 @@ Finish with a short list of what you changed.
 </transcripts>"""
 
 WIKI_HINT = (
-    "Your notes about the person are the markdown files in the `wiki/` directory of your "
-    "workspace. For questions about them, their projects or past work, read `wiki/_index.md` "
-    "first, then the pages it points to, and name the pages you used."
+    "You keep notes about the person as wiki pages. For questions about them, their projects "
+    "or past work, call `read_wiki` with no page to get the index, then `read_wiki` on the "
+    "pages it lists, or `search_wiki` for a phrase, and name the pages you used. The same "
+    "pages are the markdown files in the `wiki/` directory of your workspace."
 )
+PAGE_NAME = re.compile(r"[A-Za-z0-9_-]+")
+SEARCH_LINES = 20
+READ_CHARS = 20_000
 
 
 class Runner(Protocol):
@@ -212,6 +216,24 @@ class Wiki:
             f'printf \'\\n{FILE_MARK} %s\\n\' "$f"; cat "$f"; done'
         )
         return parse_pages(result.output)
+
+    async def read(self, page: str) -> str:
+        """Return the text of the given page, or a message that there is none."""
+        if not PAGE_NAME.fullmatch(page):
+            return f"No page named {page!r}: names use letters, digits, - and _."
+        result = await self.runner.run(
+            f"cat {WIKI_ROOT}/{page}.md", session=WIKI_SESSION, profile=Profile(github=False)
+        )
+        return result.output[:READ_CHARS] if result.exit_code == 0 else f"No page named {page!r}."
+
+    async def search(self, text: str) -> str:
+        """Return the page lines that contain the given text, or a message that none do."""
+        result = await self.runner.run(
+            f"cd {WIKI_ROOT} && grep -nIiF -m {SEARCH_LINES} -e {shlex.quote(text)} -- *.md",
+            session=WIKI_SESSION,
+            profile=Profile(github=False),
+        )
+        return result.output[:READ_CHARS] if result.exit_code == 0 else "No matches."
 
     async def commit(self, message: str) -> str:
         """Commit every change and return the diffstat, or an empty string if nothing changed."""

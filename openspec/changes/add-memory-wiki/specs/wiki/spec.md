@@ -26,12 +26,17 @@ When `WIKI` is `on`, the system SHALL keep a git repository at `/config/shared/w
 
 ### Requirement: Chat reads the wiki read-only
 
-A chat turn SHALL have the wiki at `wiki/` in its workspace, read-only. The system SHALL tell the agent to read `wiki/_index.md` first for questions about the person and to name the pages it used.
+A chat turn SHALL have the wiki at `wiki/` in its workspace, read-only, and the tools `read_wiki` (a page by name, the index by default) and `search_wiki` (lines containing a phrase), which SHALL run without approval. The system SHALL tell the agent to read the index first for questions about the person and to name the pages it used.
 
 #### Scenario: A question about the person
 
 - **WHEN** a person asks where they live and the wiki has a page for it
-- **THEN** the agent can read that page from `wiki/` and a plain write to `wiki/` is refused
+- **THEN** the agent can read that page with `read_wiki` without approval, and a plain write to `wiki/` is refused
+
+#### Scenario: A name that is not a page
+
+- **WHEN** the agent calls `read_wiki` with `../etc/passwd`
+- **THEN** the tool refuses the name and reads no file
 
 ### Requirement: A dream folds recent conversations into the wiki
 
@@ -58,12 +63,12 @@ The system SHALL make no model request, and change nothing in the wiki, for a dr
 
 ### Requirement: A dream turn is limited
 
-A dream turn SHALL be offered no tool but `run_command`, and `run_command` SHALL run unasked for it. Its workspace SHALL hold only the wiki, read-write, and its commands SHALL run without a GitHub token.
+A dream SHALL run on an agent that has no web search and no MCP servers. Its turn SHALL be offered no tool but `run_command`, and `run_command` SHALL run unasked for it. Its workspace SHALL hold only the wiki, read-write, and its commands SHALL run without a GitHub token.
 
 #### Scenario: Other tools
 
-- **WHEN** a dream turn starts with web fetch, memory and inbox tools configured
-- **THEN** the model is offered only `run_command`
+- **WHEN** a dream turn starts with web search, web fetch, memory, inbox and MCP tools configured for chat
+- **THEN** the model is offered only `run_command`, with no native or fallback web search
 
 ### Requirement: Conversation text is data, not instructions
 

@@ -16,6 +16,7 @@ from dash.db import Store
 from dash.inbox import MESSAGE
 from dash.inbox.db import InboxStore
 from dash.memory import DUPLICATE_DISTANCE, Embedder
+from dash.wiki import Wiki
 
 MEMORY_RESULTS = 8
 
@@ -79,6 +80,23 @@ def memory_tools(store: Store, embedder: Embedder) -> FunctionToolset[TurnDeps]:
             return f"Already known: {nearest[0][0].content}"
         await store.add_memory(fact, embedding, source="agent")
         return "Remembered."
+
+    return tools
+
+
+def wiki_tools(wiki: Wiki) -> FunctionToolset[TurnDeps]:
+    """Return the `read_wiki` and `search_wiki` tools."""
+    tools = FunctionToolset[TurnDeps]()
+
+    @tools.tool_plain
+    async def read_wiki(page: str = "_index") -> str:
+        """Return a page of your notes about the person by name. With no name, return the index."""
+        return await wiki.read(page)
+
+    @tools.tool_plain
+    async def search_wiki(text: str) -> str:
+        """Return the lines of your notes that contain the text, each with its page name."""
+        return await wiki.search(text)
 
     return tools
 

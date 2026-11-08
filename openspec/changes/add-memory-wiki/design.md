@@ -22,7 +22,11 @@ After a dream the worker reads the pages and checks them: frontmatter present, `
 
 ### What a dream may do
 
-A dream runs as an ordinary turn in a conversation titled `Dream <date>`, so it shows in the chat list and keeps its history. Its turn is limited to `run_command` through a new tool limit on the turn, `run_command` is pre-approved for it, and its profile has no GitHub token and mounts only the wiki. Transcripts are given as data inside tags and the instructions say never to follow them. Scraped pages reach transcripts, so a transcript is an injection route; the limits are what contain it. The model's own web search is a capability, not a toolset, and this limit may not cover it. That needs checking before the dream runs on untrusted input.
+A dream runs as an ordinary turn in a conversation titled `Dream <date>`, so it shows in the chat list and keeps its history. It runs on its own agent, built without the web-search capability and with no MCP servers. Web search is a capability that brings its own tool (the model's native one, or a DuckDuckGo fallback), so neither the tool policy nor a per-turn tool limit can remove it; leaving it out of the agent does. The turn is also limited to `run_command`, which is pre-approved for it, and its profile has no GitHub token and mounts only the wiki. Transcripts are given as data inside tags and the instructions say never to follow them. Scraped pages reach transcripts, so a transcript is an injection route; the limits are what contain it.
+
+### Chat reads through tools, not the shell
+
+Chat is offered `read_wiki` and `search_wiki`. They read the repository directly, take a page name that is letters, digits, `-` and `_`, and need no approval, so reading notes does not wait in the inbox while `run_command` stays on `ask`. The read-only mount stays for sessions that use the shell.
 
 ### Scheduling
 
@@ -34,7 +38,7 @@ The wiki is read by the agent through the filesystem. Recalled memories still co
 
 ## Risks
 
-- The dream is the first unattended agent that edits state. The tool limit, the single-commit history and the inbox note are the controls.
+- The dream is the first unattended agent that edits state. The separate agent, the tool limit, the single-commit history and the inbox note are the controls.
 - Transcript text goes to the model that edits the wiki; with a hosted model that is already true of chat.
 - Chat sessions copy the wiki before every command, which is fine for notes and not for a large directory.
 - A very busy day can exceed the 60,000 characters of transcript. The newest conversations come first and the rest wait for the next dream, since the cut-off time only moves to the dream's start.

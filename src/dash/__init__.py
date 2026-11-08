@@ -139,7 +139,7 @@ async def _worker() -> None:
     from dash.agent.deps import TurnDeps
     from dash.agent.policy import ToolPolicy
     from dash.agent.sandbox import Sandbox, private_key_copy
-    from dash.agent.tools import inbox_tools, memory_tools, sandbox_tools, web_tools
+    from dash.agent.tools import inbox_tools, memory_tools, sandbox_tools, web_tools, wiki_tools
     from dash.agent.web import Fetcher
     from dash.agent.workspace import parse_profiles
     from dash.db import Store
@@ -182,6 +182,7 @@ async def _worker() -> None:
             if settings.wiki_enabled:
                 profiles = with_wiki(profiles)
                 wiki = Wiki(sandbox)
+                toolsets.append(wiki_tools(wiki))
             toolsets.append(sandbox_tools(sandbox, profiles))
         agent = build_agent(
             model,
@@ -195,6 +196,11 @@ async def _worker() -> None:
             tool_calls_limit=settings.agent_tool_call_limit,
         )
         engine = Engine(agent, limits, servers=servers, policy=policy)
+        dream_engine = Engine(
+            build_agent(model, toolsets=toolsets, policy=policy, thinking=settings.agent_thinking),
+            limits,
+            policy=policy,
+        )
         try:
             await Worker(
                 store=store,
@@ -205,6 +211,7 @@ async def _worker() -> None:
                 extractor=bedrock,
                 top_k=settings.memory_top_k,
                 wiki=wiki,
+                dream_agent=dream_engine if wiki else None,
             ).run(stop)
         finally:
             await queue.close()
