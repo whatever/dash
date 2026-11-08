@@ -1,3 +1,4 @@
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -101,7 +102,7 @@ def test_a_rw_shared_mount_writes_through(tmp_path: Path) -> None:
     assert (tmp_path / "shared/wiki/page.md").read_text() == "hello"
 
 
-def test_a_ro_shared_mount_is_a_fresh_read_only_copy(tmp_path: Path) -> None:
+def test_a_ro_shared_mount_is_a_read_only_copy_made_once(tmp_path: Path) -> None:
     profile = Profile(mounts=[shared_mount("wiki", "ro")])
     (tmp_path / "shared/wiki").mkdir(parents=True)
     (tmp_path / "shared/wiki/a.md").write_text("one")
@@ -111,9 +112,9 @@ def test_a_ro_shared_mount_is_a_fresh_read_only_copy(tmp_path: Path) -> None:
     run_setup(tmp_path, profile)
 
     page = root / "wiki/a.md"
-    assert page.read_text() == "two"
+    assert page.read_text() == "one"
     assert not (page.stat().st_mode & 0o222)
-    assert not (root / "wiki").is_symlink()
+    assert not (root / "wiki/wiki").exists()
 
 
 def test_two_sessions_do_not_share_a_directory(tmp_path: Path) -> None:
@@ -151,3 +152,21 @@ def test_a_git_mount_clones_once(tmp_path: Path) -> None:
     clone = tmp_path / "s" / SESSION / "repos/app"
     assert (clone / "f.txt").read_text() == "x"
     assert not ((clone / "f.txt").stat().st_mode & 0o222)
+
+
+@pytest.mark.parametrize("mode", ["ro", "rw"])
+def test_commands_that_start_together_do_not_nest_a_mount(tmp_path: Path, mode: str) -> None:
+    (tmp_path / "shared/wiki").mkdir(parents=True)
+    (tmp_path / "shared/wiki/a.md").write_text("one")
+    profile = Profile(mounts=[shared_mount("wiki", mode)])
+    script = setup_script(
+        SESSION, profile, sessions_root=str(tmp_path / "s"), shared_root=str(tmp_path / "shared")
+    )
+
+    sh(" ".join(f"sh -c {shlex.quote(script)} &" for _ in range(12)) + " wait")
+
+    assert (tmp_path / "s" / SESSION / "wiki/a.md").read_text() == "one"
+    assert not (tmp_path / "shared/wiki/wiki").exists()
+    assert not (tmp_path / "s" / SESSION / "wiki/wiki").exists()
+    session = tmp_path / "s" / SESSION
+    assert len(list(session.glob(".wiki.*"))) == (1 if mode == "ro" else 0)

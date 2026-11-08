@@ -1,7 +1,7 @@
 ## 1. Workspace profiles
 
 - [x] 1.1 Parse and validate `WORKSPACE_PROFILES` into profiles of git and shared mounts. Verify: unit tests for valid profiles and for paths, sources and refs that could escape.
-- [x] 1.2 Build the idempotent setup script for a session. Verify: tests run it in a local shell for read-write, read-only and git mounts, twice.
+- [x] 1.2 Build the idempotent setup script for a session. Verify: tests run it in a local shell for read-write, read-only and git mounts, twice, and 12 at once.
 
 ## 2. Use them
 

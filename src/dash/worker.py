@@ -212,7 +212,10 @@ class Worker:
         """Commit the wiki, lint it, leave a note in the inbox and record the dream as done."""
         try:
             stat = await wiki.commit(f"dream {now:%Y-%m-%d %H:%M}: {read} conversations")
-            problems = lint(await wiki.pages())
+            problems = [
+                *lint(await wiki.pages()),
+                *(f"unexpected entry {name}" for name in await wiki.strays()),
+            ]
         except RuntimeError:
             log.exception("wiki commit failed")
             await self.queue.finish_dream(None)

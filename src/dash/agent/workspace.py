@@ -3,6 +3,7 @@
 import posixpath
 import re
 import shlex
+from collections.abc import Callable
 from typing import Literal, Self
 
 from pydantic import BaseModel, TypeAdapter, model_validator
@@ -30,7 +31,8 @@ class Mount(BaseModel):
 
     A `git` mount is a shallow clone of `owner/repo` at `ref`. A `shared` mount is the
     directory `source` under the sandbox's shared root: `rw` links the live directory, `ro`
-    is a fresh copy made before every command with its write bits removed.
+    is a copy made at the session's first command with its write bits removed. Both are
+    reached through a link, so `ls -la` shows a symlink.
     """
 
     kind: Kind
@@ -75,29 +77,41 @@ def session_dir(session: str) -> str:
     return f"{SESSIONS_ROOT}/{session}"
 
 
+def _place(target: str, build: Callable[[str], str], *, freeze: bool) -> str:
+    """Return the shell that builds a directory beside `target` and links `target` to it.
+
+    Commands of one conversation can run at once. Each builds under its own hidden name and then
+    links, which only one can do, since creating a symlink is atomic. A loser deletes its copy.
+    """
+    name = f".{posixpath.basename(target)}."
+    built = f"{shlex.quote(posixpath.dirname(target) + '/' + name)}$$"
+    quoted = shlex.quote(target)
+    lock = f"chmod -R a-w {built} && " if freeze else ""
+    return (
+        f"if [ ! -e {quoted} ]; then rm -rf {built}; {build(built)} && {lock}"
+        f"{{ ln -sn {shlex.quote(name)}$$ {quoted} 2>/dev/null || "
+        f"{{ chmod -R u+w {built}; rm -rf {built}; }}; }}; fi"
+    )
+
+
 def _git_mount(mount: Mount, target: str) -> str:
     """Return the shell that clones the given git mount once."""
     branch = f"--branch {shlex.quote(mount.ref)} " if mount.ref else ""
     url = shlex.quote(f"https://github.com/{mount.source}")
-    lock = f"chmod -R a-w {shlex.quote(target)}" if mount.mode == "ro" else "true"
-    tmp = shlex.quote(f"{target}.tmp")
-    quoted = shlex.quote(target)
-    return (
-        f"if [ ! -e {quoted} ]; then rm -rf {tmp}; "
-        f"git clone --quiet --depth 1 {branch}{url} {tmp} && mv {tmp} {quoted} && {lock}; fi"
+    return _place(
+        target,
+        lambda tmp: f"git clone --quiet --depth 1 {branch}{url} {tmp}",
+        freeze=mount.mode == "ro",
     )
 
 
 def _shared_mount(mount: Mount, target: str, shared_root: str) -> str:
-    """Return the shell that links, or freshly copies, the given shared mount."""
+    """Return the shell that links, or once copies, the given shared mount."""
     source = shlex.quote(f"{shared_root}/{mount.source}")
-    quoted = shlex.quote(target)
     if mount.mode == "rw":
-        return f"if [ ! -e {quoted} ]; then ln -s {source} {quoted}; fi"
-    return (
-        f"chmod -R u+w {quoted} 2>/dev/null || true; rm -rf {quoted}; "
-        f"cp -a {source} {quoted} && chmod -R a-w {quoted}"
-    )
+        quoted = shlex.quote(target)
+        return f"[ -L {quoted} ] || ln -sn {source} {quoted} 2>/dev/null || [ -L {quoted} ]"
+    return _place(target, lambda tmp: f"cp -a {source} {tmp}", freeze=True)
 
 
 def _mount_steps(mount: Mount, root: str, shared_root: str) -> list[str]:

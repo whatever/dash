@@ -235,6 +235,13 @@ class Wiki:
         )
         return result.output[:READ_CHARS] if result.exit_code == 0 else "No matches."
 
+    async def strays(self) -> list[str]:
+        """Return the names in the repository that are neither pages nor git's own."""
+        result = await self.sh(
+            f"cd {WIKI_ROOT} && ls -A | grep -v -e '\\.md$' -e '^\\.git$' || true"
+        )
+        return result.output.split()
+
     async def commit(self, message: str) -> str:
         """Commit every change and return the diffstat, or an empty string if nothing changed."""
         result = await self.sh(

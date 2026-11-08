@@ -19,6 +19,11 @@ When `WIKI` is `on`, the system SHALL keep a git repository at `/config/shared/w
 
 `_index.md` SHALL list every page once as `[[name]]` and nothing else. A `[[link]]` in a page SHALL name an existing page.
 
+#### Scenario: Something that is not a page
+
+- **WHEN** a dream leaves a symlink or a non-markdown file in the repository
+- **THEN** the inbox note for that dream names it as an unexpected entry
+
 #### Scenario: A page missing from the index
 
 - **WHEN** a dream adds `oakland.md` and does not list it in `_index.md`
