@@ -105,6 +105,24 @@ async def _scrape(
 
 
 @main.command()
+def dream() -> None:
+    """Queue a job that folds recent conversations into the wiki. Run it from a cron."""
+    queued = asyncio.run(_dream(os.environ.get("REDIS_URL", "redis://localhost:6379/0")))
+    click.echo(f"queued dream {queued}" if queued else "a dream is already queued")
+
+
+async def _dream(redis_url: str) -> str | None:
+    """Return the id of the queued dream job, or None if one is already waiting."""
+    from dash.queue import Queue
+
+    queue = Queue.from_url(redis_url)
+    try:
+        return await queue.enqueue_dream()
+    finally:
+        await queue.close()
+
+
+@main.command()
 def worker() -> None:
     """Consume the job queue and answer with the agent."""
     asyncio.run(_worker())
@@ -121,16 +139,19 @@ async def _worker() -> None:
     from dash.agent.deps import TurnDeps
     from dash.agent.policy import ToolPolicy
     from dash.agent.sandbox import Sandbox, private_key_copy
-    from dash.agent.tools import inbox_tools, memory_tools, sandbox_tools, web_tools
+    from dash.agent.tools import inbox_tools, memory_tools, sandbox_tools, web_tools, wiki_tools
     from dash.agent.web import Fetcher
     from dash.agent.workspace import parse_profiles
     from dash.db import Store
     from dash.inbox.db import InboxStore
     from dash.memory import Bedrock
     from dash.queue import Queue
+    from dash.wiki import Wiki, with_wiki
     from dash.worker import Worker
 
     settings = Settings.from_env()
+    if settings.wiki_enabled and not settings.sandbox_host:
+        raise click.UsageError("WIKI=on needs SANDBOX_HOST.")
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -146,6 +167,7 @@ async def _worker() -> None:
         httpx.AsyncClient(timeout=20, headers={"User-Agent": "dash"}) as http,
     ):
         inbox = InboxStore(store.sessions)
+        wiki = None
         toolsets: list[AbstractToolset[TurnDeps]] = [
             web_tools(Fetcher(http)),
             memory_tools(store, bedrock),
@@ -156,7 +178,12 @@ async def _worker() -> None:
             sandbox = Sandbox(
                 settings.sandbox_host, settings.sandbox_port, settings.sandbox_user, key
             )
-            toolsets.append(sandbox_tools(sandbox, parse_profiles(settings.workspace_profiles)))
+            profiles = parse_profiles(settings.workspace_profiles)
+            if settings.wiki_enabled:
+                profiles = with_wiki(profiles)
+                wiki = Wiki(sandbox)
+                toolsets.append(wiki_tools(wiki))
+            toolsets.append(sandbox_tools(sandbox, profiles))
         agent = build_agent(
             model,
             toolsets=toolsets,
@@ -169,6 +196,11 @@ async def _worker() -> None:
             tool_calls_limit=settings.agent_tool_call_limit,
         )
         engine = Engine(agent, limits, servers=servers, policy=policy)
+        dream_engine = Engine(
+            build_agent(model, toolsets=toolsets, policy=policy, thinking=settings.agent_thinking),
+            limits,
+            policy=policy,
+        )
         try:
             await Worker(
                 store=store,
@@ -178,6 +210,8 @@ async def _worker() -> None:
                 embedder=bedrock,
                 extractor=bedrock,
                 top_k=settings.memory_top_k,
+                wiki=wiki,
+                dream_agent=dream_engine if wiki else None,
             ).run(stop)
         finally:
             await queue.close()

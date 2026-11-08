@@ -28,6 +28,7 @@ x-dash-env: &dash-env
   AGENT_BASE_URL: ${AGENT_BASE_URL:-http://litellm:4000/v1}
   AGENT_API_KEY: ${AGENT_API_KEY:-${LITELLM_MASTER_KEY:-sk-local}}
   WORKSPACE_PROFILES: ${WORKSPACE_PROFILES:-}
+  WIKI: ${WIKI:-off}
   NANGO_URL: http://nango:3003
   NANGO_PUBLIC_URL: http://localhost:3003
   NANGO_CONNECT_URL: http://localhost:3009

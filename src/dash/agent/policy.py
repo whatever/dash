@@ -40,6 +40,8 @@ class ToolPolicy(BaseModel):
         """
 
         def shown(ctx: RunContext[TurnDeps], tool: ToolDefinition) -> bool:
+            if ctx.deps.tools is not None and tool.name not in ctx.deps.tools:
+                return False
             return self.verdict(tool.name) != NEVER
 
         def asks(ctx: RunContext[TurnDeps], tool: ToolDefinition, args: dict[str, Any]) -> bool:

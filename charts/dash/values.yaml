@@ -64,6 +64,12 @@ agent:
   mcpServers: []
   webSearch: true
 
+# The memory wiki: markdown pages in a git repo in the sandbox. Chat sessions get it read-only
+# at wiki/, and a nightly `dash dream` job folds recent conversations into it. Needs the sandbox.
+wiki:
+  enabled: false
+  schedule: "0 4 * * *"
+
 # The ssh sandbox the agent runs commands in. Only it holds the Nango and GitHub tokens.
 # profiles: what each kind of session gets in its own workspace, /config/workspace/sessions/<id>.
 #   {default: {github: true, mounts: [{kind: git, source: owner/repo, ref: main, path: repos/x, mode: ro}]}}
