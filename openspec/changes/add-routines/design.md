@@ -16,9 +16,9 @@ Claude Code has three schedulers. The one that fits here is its in-session one: 
 
 **A fire is not consent.** It never answers or pre-answers an approval. "Allow always" rules still apply, since a person made them.
 
-**Creation by the agent is an approval, always.** `schedule_routine` is `ask`, and the card shows the full prompt, the schedule and the conversation that proposed it. An "Allow always" rule can't cover it, because the call's arguments are a new prompt every time. This is the same agent-proposes, person-approves pattern as #43.
+**Creation and updates by the agent are approvals, always.** `schedule_routine` and `update_routine` are `ask`, and the card shows the full prompt, the schedule and the conversation that proposed it. An "Allow always" rule can't cover them, because the call's arguments are a new prompt every time. This is the same agent-proposes, person-approves pattern as #43.
 
-**A fired run can't create routines.** Without this, one routine could schedule more, each approved once. It can still list and cancel.
+**A fired run can't create or update routines.** Without this, one routine could schedule more, each approved once. It can still list and cancel.
 
 **Limits for agent-created routines.** A 15-minute floor (a person can go to 5, the same as sources), at most 20 enabled at once, and an expiry 7 days after creation for recurring ones. After expiry a routine stops firing and stays listed, and a person can renew it. This differs from Claude Code, which fires once more and deletes the task, because a deleted routine can't be renewed. One-shots and person-created routines don't expire.
 

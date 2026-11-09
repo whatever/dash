@@ -9,7 +9,7 @@ This change proposes the same for dash: **routines**, prompts that run on a sche
 - Add routines: a name, a prompt, a schedule (a cron expression or one time), a time zone, an owner (`user` or `agent`) and an on/off switch.
 - Each run starts a new conversation named for the routine, so it can be opened and read like any chat.
 - A run's reply, or its failure, is left in the inbox so a person hears about it.
-- The agent gets `schedule_routine`, `list_routines` and `cancel_routine`. Creating a routine as the agent waits for a person's approval.
+- The agent gets `schedule_routine`, `update_routine`, `list_routines` and `cancel_routine`. Creating or updating a routine as the agent waits for a person's approval.
 - A fired run cannot create routines, and a fire never counts as approval for anything.
 - Agent-created recurring routines stop after 7 days unless a person renews them, have a 15-minute floor, and are capped in number.
 - A Routines view in the web UI lists them with next and last run, and can pause, run now and delete.
