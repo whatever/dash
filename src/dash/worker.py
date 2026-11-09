@@ -5,14 +5,17 @@
 """
 
 import asyncio
+import contextlib
 import logging
 import socket
+import time
 import uuid
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, Protocol
 
 from redis.exceptions import RedisError
 
+from dash.config import DEFAULT_TURN_TIMEOUT_SECONDS
 from dash.db import Store
 from dash.hermes import Delta, conversation_key
 from dash.memory import (
@@ -30,6 +33,9 @@ log = logging.getLogger(__name__)
 # Coalesce deltas so a fast model doesn't write one Redis entry per token.
 FLUSH_CHARS = 48
 RETRY_SECONDS = 2
+LEASE_RENEW_SECONDS = 30
+SLOW_JOB_SECONDS = 5 * 60
+TIMEOUT_MESSAGE = "The job timed out."
 
 
 def record(log: list[dict[str, Any]], kind: str, data: Mapping[str, Any]) -> None:
@@ -61,6 +67,7 @@ class Worker:
         extractor: Extractor,
         top_k: int,
         reviewer: Reviewer | None = None,
+        turn_timeout_seconds: float = DEFAULT_TURN_TIMEOUT_SECONDS,
     ) -> None:
         self.store = store
         self.queue = queue
@@ -69,6 +76,7 @@ class Worker:
         self.extractor = extractor
         self.top_k = top_k
         self.reviewer = reviewer
+        self.turn_timeout_seconds = turn_timeout_seconds
         self.name = f"{socket.gethostname()}-{uuid.uuid4().hex[:6]}"
 
     async def recall(self, text: str) -> list[str]:
@@ -206,6 +214,39 @@ class Worker:
             log.info("stored %d new memories", stored)
         return text
 
+    async def renew_lease(self, job: Job) -> None:
+        """Keep the job's pending entry fresh so no other worker claims it."""
+        while True:
+            await asyncio.sleep(LEASE_RENEW_SECONDS)
+            try:
+                await self.queue.renew(self.name, job)
+            except RedisError:
+                log.exception("lease renewal for job %s failed, retrying", job.job_id)
+
+    async def process(self, job: Job) -> None:
+        """Run a job under a lease and a deadline, then ack it."""
+        started = time.monotonic()
+        lease = asyncio.create_task(self.renew_lease(job))
+        deadline = asyncio.timeout(self.turn_timeout_seconds)
+        try:
+            async with deadline:
+                await self.handle(job)
+        except Exception as ex:
+            if deadline.expired():
+                log.error("job %s timed out after %.0f s", job.job_id, self.turn_timeout_seconds)
+                await self.queue.emit(job.job_id, "error", message=TIMEOUT_MESSAGE)
+            else:
+                log.exception("job %s failed", job.job_id)
+                await self.queue.emit(job.job_id, "error", message=str(ex))
+        finally:
+            lease.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await lease
+        elapsed = time.monotonic() - started
+        level = logging.WARNING if elapsed > SLOW_JOB_SECONDS else logging.INFO
+        log.log(level, "job %s (%s) took %.1f s", job.job_id, job.kind, elapsed)
+        await self.queue.ack(job)
+
     async def run(self, stop: asyncio.Event | None = None) -> None:
         await self.queue.ensure_group()
         log.info("worker %s waiting for jobs", self.name)
@@ -218,9 +259,4 @@ class Worker:
                 continue
             if job is None:
                 continue
-            try:
-                await self.handle(job)
-            except Exception as ex:
-                log.exception("job %s failed", job.job_id)
-                await self.queue.emit(job.job_id, "error", message=str(ex))
-            await self.queue.ack(job)
+            await self.process(job)

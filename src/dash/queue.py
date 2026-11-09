@@ -22,8 +22,8 @@ from redis.exceptions import ResponseError
 JOBS = "dash:jobs"
 GROUP = "workers"
 EVENTS_TTL_SECONDS = 3600
-# A job a dead worker held this long goes to another worker.
-CLAIM_IDLE_MS = 5 * 60 * 1000
+# A running job's lease is renewed every 30 s, so one idle this long belongs to a dead worker.
+CLAIM_IDLE_MS = 2 * 60 * 1000
 # Must stay above the longest XREAD block below.
 SOCKET_TIMEOUT_SECONDS = 30
 # How long `dash scrape` remembers an item it already enqueued.
@@ -146,6 +146,10 @@ class Queue:
     async def ack(self, job: Job) -> None:
         await self.redis.xack(JOBS, GROUP, job.entry_id)
         await self.redis.xdel(JOBS, job.entry_id)
+
+    async def renew(self, consumer: str, job: Job) -> None:
+        """Reset the idle time of a job this consumer is running."""
+        await self.redis.xclaim(JOBS, GROUP, consumer, 0, [job.entry_id], justid=True)
 
     async def emit(self, job_id: str, kind: str, **data: object) -> None:
         key = events_key(job_id)

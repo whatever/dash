@@ -138,6 +138,7 @@ async def _worker() -> None:
                 extractor=bedrock,
                 top_k=settings.memory_top_k,
                 reviewer=GitHubReviewer(GitHubStore(store.sessions)),
+                turn_timeout_seconds=settings.turn_timeout_seconds,
             ).run(stop)
         finally:
             await hermes.close()
