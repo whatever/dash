@@ -34,6 +34,7 @@ log = logging.getLogger(__name__)
 FLUSH_CHARS = 48
 RETRY_SECONDS = 2
 LEASE_RENEW_SECONDS = 30
+PRUNE_INTERVAL_SECONDS = 60
 SLOW_JOB_SECONDS = 5 * 60
 TIMEOUT_MESSAGE = "The job timed out."
 
@@ -247,10 +248,24 @@ class Worker:
         log.log(level, "job %s (%s) took %.1f s", job.job_id, job.kind, elapsed)
         await self.queue.ack(job)
 
+    async def prune_consumers(self) -> None:
+        """Delete consumers left behind by dead workers."""
+        try:
+            removed = await self.queue.prune_consumers()
+        except RedisError:
+            log.exception("pruning consumers failed")
+            return
+        if removed:
+            log.info("removed %d stale consumers", removed)
+
     async def run(self, stop: asyncio.Event | None = None) -> None:
         await self.queue.ensure_group()
         log.info("worker %s waiting for jobs", self.name)
+        next_prune = time.monotonic()
         while not (stop and stop.is_set()):
+            if time.monotonic() >= next_prune:
+                await self.prune_consumers()
+                next_prune = time.monotonic() + PRUNE_INTERVAL_SECONDS
             try:
                 job = await self.queue.claim(self.name)
             except RedisError:

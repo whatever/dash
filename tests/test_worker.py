@@ -262,3 +262,26 @@ async def test_hung_job_times_out_with_an_error_and_is_acked(
     assert await events(queue) == [{"kind": "error", "message": "The job timed out."}]
     assert await queue.redis.xlen(JOBS) == 0
     assert (await queue.status())["in_flight"] == 0
+
+
+async def test_run_prunes_stale_consumers_once_a_minute(monkeypatch: pytest.MonkeyPatch) -> None:
+    worker, _, queue, _, _ = await setup(FakeChat(["x"]), [])
+    stop = asyncio.Event()
+    pruned = 0
+
+    async def prune() -> int:
+        nonlocal pruned
+        pruned += 1
+        return 0
+
+    async def claim(consumer: str, block_ms: int = 5000) -> Job | None:
+        if pruned:
+            stop.set()
+        return None
+
+    monkeypatch.setattr(queue, "prune_consumers", prune)
+    monkeypatch.setattr(queue, "claim", claim)
+
+    await worker.run(stop)
+
+    assert pruned == 1
