@@ -8,7 +8,7 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from dash.db import Store
 from dash.hermes import Delta
-from dash.queue import Job, Queue
+from dash.queue import JOBS, Job, Queue
 from dash.worker import Worker
 from tests.fakes import FakeChat, FakeEmbedder, FakeExtractor, FakeStore
 
@@ -164,3 +164,124 @@ async def test_every_job_is_recorded_on_the_timeline() -> None:
         ("job", "chat", {"conversation_id": str(conv_id)}),
     ]
     assert rows[0][:2] == ("j3", "chat")
+
+
+async def run_one_job(worker: Worker, queue: Queue, job_id: str) -> Job:
+    await queue.ensure_group()
+    await queue.enqueue(job_id)
+    job = await queue.claim(worker.name, block_ms=10)
+    assert job is not None
+    return job
+
+
+async def test_running_job_is_not_claimed_while_the_lease_renews(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker, _, queue, _, _ = await setup(FakeChat(["x"]), [])
+    job = await run_one_job(worker, queue, "conv")
+    monkeypatch.setattr("dash.queue.CLAIM_IDLE_MS", 300)
+    monkeypatch.setattr("dash.worker.LEASE_RENEW_SECONDS", 0.05)
+
+    async def slow_handle(job: Job) -> None:
+        await asyncio.sleep(0.8)
+
+    monkeypatch.setattr(worker, "handle", slow_handle)
+    running = asyncio.create_task(worker.process(job))
+    stolen: list[Job | None] = []
+    for _ in range(8):
+        await asyncio.sleep(0.1)
+        stolen.append(await queue.claim("other", block_ms=1))
+    await running
+
+    assert stolen == [None] * 8
+    assert await queue.redis.xlen(JOBS) == 0
+
+
+async def test_crashed_consumers_job_is_reclaimed_after_the_idle_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker, _, queue, _, _ = await setup(FakeChat(["x"]), [])
+    job = await run_one_job(worker, queue, "conv")
+    monkeypatch.setattr("dash.queue.CLAIM_IDLE_MS", 100)
+
+    assert await queue.claim("other", block_ms=1) is None
+    await asyncio.sleep(0.2)
+    reclaimed = await queue.claim("other", block_ms=1)
+
+    assert reclaimed is not None
+    assert reclaimed.entry_id == job.entry_id
+
+
+async def test_failed_renewal_does_not_kill_the_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    worker, _, queue, _, _ = await setup(FakeChat(["x"]), [])
+    job = await run_one_job(worker, queue, "conv")
+    monkeypatch.setattr("dash.worker.LEASE_RENEW_SECONDS", 0.01)
+    attempts = 0
+    handled = False
+
+    async def broken_renew(consumer: str, job: Job) -> None:
+        nonlocal attempts
+        attempts += 1
+        raise RedisTimeoutError("read timed out")
+
+    async def slow_handle(job: Job) -> None:
+        nonlocal handled
+        await asyncio.sleep(0.1)
+        handled = True
+
+    monkeypatch.setattr(queue, "renew", broken_renew)
+    monkeypatch.setattr(worker, "handle", slow_handle)
+
+    await worker.process(job)
+
+    assert attempts > 1
+    assert handled
+    assert await queue.redis.xlen(JOBS) == 0
+
+
+async def test_hung_job_times_out_with_an_error_and_is_acked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker, _, queue, _, _ = await setup(FakeChat(["x"]), [])
+    worker.turn_timeout_seconds = 0.05
+    job = await run_one_job(worker, queue, "conv")
+    cancelled = asyncio.Event()
+
+    async def hang(job: Job) -> None:
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(worker, "handle", hang)
+
+    await worker.process(Job(job.entry_id, "job", job.conversation_id))
+
+    assert cancelled.is_set()
+    assert await events(queue) == [{"kind": "error", "message": "The job timed out."}]
+    assert await queue.redis.xlen(JOBS) == 0
+    assert (await queue.status())["in_flight"] == 0
+
+
+async def test_run_prunes_stale_consumers_once_a_minute(monkeypatch: pytest.MonkeyPatch) -> None:
+    worker, _, queue, _, _ = await setup(FakeChat(["x"]), [])
+    stop = asyncio.Event()
+    pruned = 0
+
+    async def prune() -> int:
+        nonlocal pruned
+        pruned += 1
+        return 0
+
+    async def claim(consumer: str, block_ms: int = 5000) -> Job | None:
+        if pruned:
+            stop.set()
+        return None
+
+    monkeypatch.setattr(queue, "prune_consumers", prune)
+    monkeypatch.setattr(queue, "claim", claim)
+
+    await worker.run(stop)
+
+    assert pruned == 1

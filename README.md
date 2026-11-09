@@ -77,6 +77,7 @@ In the repo or app webhook settings, set the URL to `https://<host>/api/webhook`
 | `NANGO_URL`, `NANGO_SECRET_KEY` | `http://localhost:3003`, empty (disabled) |
 | `NANGO_PUBLIC_URL`, `NANGO_CONNECT_URL` | Browser-facing Nango API and Connect UI addresses |
 | `EMBED_MODEL`, `EXTRACT_MODEL`, `MEMORY_TOP_K` | Titan v2, Haiku 4.5, `8` |
+| `JOB_TIMEOUT_SECONDS` | Wall-clock limit for one job before the worker gives up on it, `1800` |
 | `WEBHOOK_SECRET` | empty (`/api/webhook` returns `503`) |
 
 ## Deploy

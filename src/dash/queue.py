@@ -22,8 +22,12 @@ from redis.exceptions import ResponseError
 JOBS = "dash:jobs"
 GROUP = "workers"
 EVENTS_TTL_SECONDS = 3600
-# A job a dead worker held this long goes to another worker.
-CLAIM_IDLE_MS = 5 * 60 * 1000
+# A running job's lease is renewed every 30 s, so one idle this long belongs to a dead worker.
+CLAIM_IDLE_MS = 2 * 60 * 1000
+# Live workers poll every 5 s, so a consumer idle this long is gone.
+LIVE_WORKER_IDLE_MS = 60 * 1000
+# A consumer idle this long with nothing pending is a dead pod's leftover.
+STALE_CONSUMER_IDLE_MS = 60 * 60 * 1000
 # Must stay above the longest XREAD block below.
 SOCKET_TIMEOUT_SECONDS = 30
 # How long `dash scrape` remembers an item it already enqueued.
@@ -147,6 +151,10 @@ class Queue:
         await self.redis.xack(JOBS, GROUP, job.entry_id)
         await self.redis.xdel(JOBS, job.entry_id)
 
+    async def renew(self, consumer: str, job: Job) -> None:
+        """Reset the idle time of a job this consumer is running."""
+        await self.redis.xclaim(JOBS, GROUP, consumer, 0, [job.entry_id], justid=True)
+
     async def emit(self, job_id: str, kind: str, **data: object) -> None:
         key = events_key(job_id)
         await self.redis.xadd(key, {"kind": kind, "data": json.dumps(data)})
@@ -171,6 +179,23 @@ class Queue:
                 if event["kind"] in ("done", "error"):
                     return
 
+    async def consumers(self) -> list[dict[str, Any]]:
+        """Return the group's consumers, or none if the group does not exist yet."""
+        with contextlib.suppress(ResponseError):
+            return await self.redis.xinfo_consumers(JOBS, GROUP)
+        return []
+
+    async def prune_consumers(self) -> int:
+        """Delete idle consumers with no pending entries and return how many."""
+        stale = [
+            str(c["name"])
+            for c in await self.consumers()
+            if int(c["idle"]) > STALE_CONSUMER_IDLE_MS and int(c["pending"]) == 0
+        ]
+        for name in stale:
+            await self.redis.xgroup_delconsumer(JOBS, GROUP, name)
+        return len(stale)
+
     async def status(self) -> dict[str, int]:
         waiting = int(await self.redis.xlen(JOBS))
         try:
@@ -178,7 +203,5 @@ class Queue:
             in_flight = int(pending["pending"])
         except ResponseError:
             in_flight = 0
-        consumers = 0
-        with contextlib.suppress(ResponseError):
-            consumers = len(cast("list[Any]", await self.redis.xinfo_consumers(JOBS, GROUP)))
-        return {"waiting": waiting - in_flight, "in_flight": in_flight, "workers": consumers}
+        live = [c for c in await self.consumers() if int(c["idle"]) < LIVE_WORKER_IDLE_MS]
+        return {"waiting": waiting - in_flight, "in_flight": in_flight, "workers": len(live)}

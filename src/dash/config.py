@@ -1,6 +1,8 @@
 import os
 from dataclasses import dataclass
 
+DEFAULT_TURN_TIMEOUT_SECONDS = 1800
+
 
 def _env(name: str, default: str | None = None) -> str:
     value = os.environ.get(name, default)
@@ -24,6 +26,7 @@ class Settings:
     embed_model: str
     extract_model: str
     memory_top_k: int
+    turn_timeout_seconds: float
     webhook_secret: str
 
     @classmethod
@@ -43,5 +46,8 @@ class Settings:
             embed_model=_env("EMBED_MODEL", "amazon.titan-embed-text-v2:0"),
             extract_model=_env("EXTRACT_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
             memory_top_k=int(_env("MEMORY_TOP_K", "8")),
+            turn_timeout_seconds=float(
+                _env("JOB_TIMEOUT_SECONDS", str(DEFAULT_TURN_TIMEOUT_SECONDS))
+            ),
             webhook_secret=_env("WEBHOOK_SECRET", ""),
         )
