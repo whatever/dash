@@ -115,7 +115,17 @@ A run SHALL follow the same tool policy as a chat. A call that needs approval SH
 
 ### Requirement: The agent can manage routines
 
-The agent SHALL have `schedule_routine`, `list_routines` and `cancel_routine` tools. `schedule_routine` SHALL take a name, a prompt, a cron expression or a time, and optionally a zone and `notify`, and SHALL create a routine with owner `agent`. `list_routines` SHALL return routines a page at a time with a `total` and a `next_cursor`. `cancel_routine` SHALL disable a routine by id.
+The agent SHALL have `schedule_routine`, `update_routine`, `list_routines` and `cancel_routine` tools. `schedule_routine` SHALL take a name, a prompt, a cron expression or a time, and optionally a zone and `notify`, and SHALL create a routine with owner `agent`. `update_routine` SHALL take a routine id and optional parameters to change: prompt, schedule (cron or run_at), timezone, enabled, and notify. `list_routines` SHALL return routines a page at a time with a `total` and a `next_cursor`. `cancel_routine` SHALL disable a routine by id.
+
+#### Scenario: Updating a routine
+
+- **WHEN** the agent calls `update_routine` to change a routine's prompt or schedule and the person approves
+- **THEN** the routine is updated with the new values
+
+#### Scenario: Updating an unknown routine
+
+- **WHEN** the agent calls `update_routine` with an id that does not exist
+- **THEN** the call is rejected and returns an error
 
 #### Scenario: Scheduling
 
@@ -127,13 +137,13 @@ The agent SHALL have `schedule_routine`, `list_routines` and `cancel_routine` to
 - **WHEN** the agent cancels a routine
 - **THEN** it is listed as not enabled and does not fire
 
-### Requirement: The agent's schedule waits for approval, every time
+### Requirement: The agent's schedule and updates wait for approval, every time
 
-A `schedule_routine` call SHALL wait for a person's approval that shows the full prompt, the schedule, the zone and the conversation that proposed it. A saved "allow always" rule SHALL NOT cover it. If the person denies it, no routine SHALL be stored.
+A `schedule_routine` or `update_routine` call SHALL wait for a person's approval that shows the full prompt, the schedule, the zone and the conversation that proposed it. A saved "allow always" rule SHALL NOT cover it. If the person denies it, no routine SHALL be stored.
 
-#### Scenario: Approval shows the prompt
+#### Scenario: Approval shows the details
 
-- **WHEN** the agent proposes a routine
+- **WHEN** the agent proposes to create or update a routine
 - **THEN** the approval item shows the prompt text and schedule exactly as they would run
 
 #### Scenario: Denied
@@ -143,17 +153,17 @@ A `schedule_routine` call SHALL wait for a person's approval that shows the full
 
 #### Scenario: A saved rule
 
-- **WHEN** the person has previously chosen "allow always" for a `schedule_routine` call
-- **THEN** the next `schedule_routine` call still waits for approval
+- **WHEN** the person has previously chosen "allow always" for a `schedule_routine` or `update_routine` call
+- **THEN** the next such call still waits for approval
 
-### Requirement: A run started by a routine cannot create routines
+### Requirement: A run started by a routine cannot create or update routines
 
-The agent SHALL NOT be offered `schedule_routine` during a run that a routine started. It MAY still list and cancel routines.
+The agent SHALL NOT be offered `schedule_routine` or `update_routine` during a run that a routine started. It MAY still list and cancel routines.
 
-#### Scenario: A routine tries to spawn another
+#### Scenario: A routine tries to spawn or modify routines
 
 - **WHEN** a routine's run asks for the tools it can use
-- **THEN** `schedule_routine` is not among them
+- **THEN** `schedule_routine` and `update_routine` are not among them
 
 ### Requirement: Agent-created routines are limited
 

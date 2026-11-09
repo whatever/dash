@@ -13,9 +13,9 @@
 
 ## 3. Agent tools
 
-- [ ] 3.1 `schedule_routine`, `list_routines` and `cancel_routine`
-- [ ] 3.2 Always ask for `schedule_routine`, and exclude it from rules saved by "Allow always"
-- [ ] 3.3 Leave `schedule_routine` out of the tools offered to a run started by a routine
+- [ ] 3.1 `schedule_routine`, `update_routine`, `list_routines` and `cancel_routine`
+- [ ] 3.2 Always ask for `schedule_routine` and `update_routine`, and exclude them from rules saved by "Allow always"
+- [ ] 3.3 Leave `schedule_routine` and `update_routine` out of the tools offered to a run started by a routine
 - [ ] 3.4 Enforce the floor, the cap and the 7-day expiry for agent-created routines
 
 ## 4. Tests
